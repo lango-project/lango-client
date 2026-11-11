@@ -1,0 +1,27 @@
+import "./app"
+    alias AppClass = class App
+import "./form"
+    alias FormClass = class Form
+import "./renderer"
+    alias RendererClass = class BootstrapRenderer
+    alias ControlClass = class Control
+    alias makeTemplate = createTemplate(xml)
+    alias copyTemplate = cloneTemplate(template)
+
+export global App
+export global Form
+export global BootstrapRenderer
+export global Control
+export createTemplate(xml)
+export cloneTemplate(template)
+
+global App = AppClass
+global Form = FormClass
+global BootstrapRenderer = RendererClass
+global Control = ControlClass
+
+createTemplate(xml)
+    return makeTemplate(xml)
+
+cloneTemplate(template)
+    return copyTemplate(template)

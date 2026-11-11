@@ -1,0 +1,83 @@
+import js global document
+import js global window
+import js global fetch
+import js global setTimeout
+import "./app"
+    class App
+import "./renderer"
+    class BootstrapRenderer
+
+export start()
+
+start()
+    renderer = new BootstrapRenderer()
+    storage = {
+        getItem: missingToken
+        setItem: discardToken
+    }
+    try
+        storage = window.localStorage
+    catch error
+        storage = storage
+    app = new App({
+        storage: storage
+        mount: document/querySelector("#app")
+        location: window.location
+        history: window.history
+        fetch: request
+        defer: defer
+    }, renderer)
+    click = (event)
+        capture app
+        if event.defaultPrevented or event.button != 0 or event.ctrlKey or event.metaKey or event.shiftKey or event.altKey
+            return null
+        link = event.target.closest("a[href]")
+        if link == null or link.origin != window.location.origin or link.hasAttribute("download") or (link.target != "" and link.target != "_self")
+            return null
+        event.preventDefault()
+        chain app.navigate(link.href)
+          catch(error)
+            capture renderer
+            capture app
+            renderer.reportError(app.root, error)
+    pop = ()
+        capture app
+        chain app.navigate(window.location.href, false)
+          catch(error)
+            capture renderer
+            capture app
+            renderer.reportError(app.root, error)
+    document/addEventListener("click", click)
+    window.addEventListener("popstate", pop)
+    return chain app.start()
+      then(ignored)
+        capture app
+        release = ()
+            capture click
+            capture pop
+            document/removeEventListener("click", click)
+            window.removeEventListener("popstate", pop)
+        resources = app.root.resources
+        resources.add(release)
+        return app
+      catch(error)
+        capture app
+        capture click
+        capture pop
+        document/removeEventListener("click", click)
+        window.removeEventListener("popstate", pop)
+        app.dispose()
+        throw error
+
+missingToken(key)
+    return null
+
+discardToken(key, value)
+    return null
+
+defer(action)
+    setTimeout(action, 0)
+    return null
+
+request(url, options)
+    return fetch(url, options)

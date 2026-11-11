@@ -1,0 +1,12 @@
+import js "node:fs" as fs
+import js "node:path" as path
+
+export main(args)
+
+main(args)
+    for ["index.html", "client.css"] as name
+        fs/copyFileSync(path/join("web", name), path/join("dist", name))
+    fs/copyFileSync("node_modules/bootstrap/dist/css/bootstrap.min.css", "dist/bootstrap.min.css")
+    fs/copyFileSync("node_modules/bootstrap/dist/css/bootstrap.min.css.map", "dist/bootstrap.min.css.map")
+    fs/copyFileSync("node_modules/bootstrap/LICENSE", "dist/bootstrap-LICENSE")
+    return null

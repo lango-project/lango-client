@@ -1,0 +1,125 @@
+import js global Object
+import js global Promise
+
+export class Form(app, parent = null, token = null)
+    properties
+        app
+        parent
+        token
+        controls
+        owned
+        inheritedNames
+        disposed
+        element
+        resources
+    methods
+        register(name, control)
+        find(name)
+        getValue()
+        setValue(values)
+        setToken(token)
+        send(url)
+        handle(packet)
+        related(other)
+        dispose()
+
+Form(app, parent = null, token = null)
+    @app = app
+    @parent = parent
+    @token = token
+    @controls = Object/create(null)
+    @owned = []
+    @inheritedNames = []
+    @disposed = false
+    @element = null
+    @resources = []
+    app.forms.add(@this)
+
+Form:register(name, control)
+    @owned.add(control)
+    if name == null
+        return control
+    if !is_string(name) or name == "" or name.includes("/") or name in @controls
+        throw "Invalid or duplicate control name: ${name}"
+    @controls[name] = control
+    return control
+
+Form:find(name)
+    parts = name.split("/")
+    current = @controls[parts.shift()]
+    if current == null
+        if @inheritedNames.includes(name) and @parent != null
+            return @parent.find(name)
+        throw "Unknown control: ${name}"
+    if parts.length > 0
+        if !is_kindof(current, Form)
+            throw "Control is not a form: ${name}"
+        return current.find(parts.join("/"))
+    return current
+
+Form:getValue()
+    result = Object/create(null)
+    for @controls as name: control
+        result[name] = control.getValue()
+    for @inheritedNames as name
+        if @parent == null or name in result
+            throw "Invalid inherited name: ${name}"
+        source = @parent.find(name)
+        result[name] = source.getValue()
+    return result
+
+Form:setValue(values)
+    for values as name: value
+        find(name).setValue(value)
+    return @this
+
+Form:setToken(token)
+    if token != null
+        @token = token
+        @app.saveToken(token)
+    return @this
+
+Form:send(url)
+    return @app.send(@this, url)
+
+Form:handle(packet)
+    if @disposed
+        return null
+    setToken(packet.token)
+    body = packet.body
+    if body.view != null
+        @app.renderer.show(@this, body.view)
+    if body.cmds != null
+        for body.cmds as cmd
+            @app.command(@this, cmd)
+    return null
+
+Form:related(other)
+    node = other
+    loop while node != null
+        if node == @this
+            return true
+        node = node.parent
+    node = @this
+    loop while node != null
+        if node == other
+            return true
+        node = node.parent
+    return false
+
+Form:dispose()
+    if @disposed
+        return null
+    @disposed = true
+    for @owned as control
+        control.dispose()
+    for @resources as release
+        release()
+    @resources = []
+    @controls = Object/create(null)
+    alive = []
+    for @app.forms as form
+        if form != @this
+            alive.add(form)
+    @app.forms = alive
+    return null

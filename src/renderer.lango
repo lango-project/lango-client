@@ -1,0 +1,212 @@
+import js global Object
+import js global document
+import "./form"
+    class Form
+
+export createTemplate(xml)
+export cloneTemplate(template)
+export class Control(form, props, element)
+    properties
+        element
+        release
+    methods
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        setCaption(value)
+        dispose()
+export class BootstrapRenderer()
+    methods
+        registerControlType(name, factory)
+        build(form, props)
+        show(form, view)
+        waiting(form, active)
+        reportError(form, error)
+
+createTemplate(xml)
+    template = document/createElement("template")
+    template.innerHTML = "${xml}"
+    return template
+
+cloneTemplate(template)
+    return template.content.firstElementChild.cloneNode(true)
+
+Control(form, props, element)
+    @form = form
+    @props = props
+    @element = element
+    @value = props.value
+    if @value == null
+        @value = null
+    @release = []
+
+Control:getValue()
+    switch @props.type
+      case "input"
+          return @element.value
+      case "value"
+          return @value
+      else
+          return null
+
+Control:setValue(value)
+    @value = value
+    if @props.type == "input"
+        if value == null
+            @element.value = ""
+          else
+              @element.value = "${value}"
+    return @this
+
+Control:setDisabled(value)
+    @element.disabled = value
+    return @this
+
+Control:setCaption(value)
+    @element.textContent = value
+    return @this
+
+Control:dispose()
+    for @release as release
+        release()
+    @release = []
+    return null
+
+BootstrapRenderer()
+    @factories = Object/create(null)
+    @templates = Object/create(null)
+    @templates.button = createTemplate(<button type="button" class="btn"></button>)
+    @templates.text = createTemplate(<span></span>)
+    @templates.input = createTemplate(<input class="form-control" />)
+    @templates.value = createTemplate(<span hidden="hidden"></span>)
+    @templates.container = createTemplate(<div></div>)
+
+BootstrapRenderer:registerControlType(name, factory)
+    if name in @factories
+        throw "Control type already registered: ${name}"
+    @factories[name] = factory
+    return @this
+
+BootstrapRenderer:build(form, props)
+    if !is_object(props) or !is_string(props.type)
+        throw "Control requires a type"
+    if props.type == "form"
+        child = new Form(form.app, form, form.token)
+        child.inheritedNames = props.inheritedNames
+        if child.inheritedNames == null
+            child.inheritedNames = []
+        form.register(props.name, child)
+        child.element = cloneTemplate(@templates.container)
+        for props.controls as item
+            child.element.appendChild(build(child, item))
+        return child.element
+    if props.type in @factories
+        custom = @factories[props.type](form, props)
+        form.register(props.name, custom)
+        return custom.element
+    kind = props.type
+    if kind == "row" or kind == "col"
+        kind = "container"
+    if !(kind in @templates)
+        throw "Unsupported control type: ${props.type}"
+    element = cloneTemplate(@templates[kind])
+    if props.type == "row" or props.type == "col"
+        element.classList.add(props.type)
+    control = new Control(form, props, element)
+    form.register(props.name, control)
+    if props.style != null
+        for props.style as name: value
+            element.style.setProperty(name, value)
+    if props.aria != null
+        for props.aria as name: value
+            element.setAttribute("aria-${name}", value)
+    switch kind
+      case "button"
+          theme = props.theme
+          if theme == null
+              theme = "primary"
+          element.classList.add("btn-${theme.toLowerCase()}")
+          element.textContent = props.caption
+          element.disabled = props.disabled == true
+          if props.url != null
+              listener = ()
+                  capture form
+                  capture props
+                  chain form.send(props.url)
+                    catch(error)
+                      capture form
+                      reportError(form, error)
+              element.addEventListener("click", listener)
+              release = ()
+                  capture element
+                  capture listener
+                  element.removeEventListener("click", listener)
+              releases = control.release
+              releases.add(release)
+      case "text"
+          element.textContent = props.text
+      case "input"
+          variant = props.variant
+          if variant == null
+              variant = "text"
+          variants = ["text", "email", "password", "search", "tel", "url"]
+          if !variants.includes(variant.toLowerCase())
+              throw "Unsupported input variant: ${variant}"
+          element.type = variant.toLowerCase()
+          element.disabled = props.disabled == true
+          element.readOnly = props.readonly == true
+          element.required = props.required == true
+          if props.placeholder != null
+              element.placeholder = props.placeholder
+          if props.maxLength != null
+              element.maxLength = props.maxLength
+          if props.label != null
+              element.setAttribute("aria-label", props.label)
+          control.setValue(props.value)
+      case "container"
+          if props.controls != null
+              for props.controls as item
+                  element.appendChild(build(form, item))
+    return element
+
+BootstrapRenderer:show(form, view)
+    previous = form.controls
+    owned = form.owned
+    inherited = form.inheritedNames
+    form.controls = Object/create(null)
+    form.owned = []
+    content = document/createElement("div")
+    try
+        if view.type == "form"
+            form.inheritedNames = view.inheritedNames
+            if form.inheritedNames == null
+                form.inheritedNames = []
+            for view.controls as props
+                content.appendChild(build(form, props))
+          else
+              content.appendChild(build(form, view))
+    catch error
+        for form.owned as control
+            control.dispose()
+        form.controls = previous
+        form.owned = owned
+        form.inheritedNames = inherited
+        throw error
+    for owned as control
+        control.dispose()
+    form.element.replaceChildren(content)
+    return null
+
+BootstrapRenderer:waiting(form, active)
+    if form.element != null
+        form.element.classList.toggle("lango-waiting", active)
+        form.element.setAttribute("aria-busy", "${active}")
+    return null
+
+BootstrapRenderer:reportError(form, error)
+    element = document/createElement("div")
+    element.className = "toast show text-bg-danger"
+    element.setAttribute("role", "alert")
+    element.textContent = "${error}"
+    form.element.appendChild(element)
+    return null

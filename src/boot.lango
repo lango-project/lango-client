@@ -1,0 +1,12 @@
+import "./main"
+    start()
+
+global application = launch()
+
+launch()
+    return chain start()
+      catch(error)
+        importFailure(error)
+
+importFailure(error)
+    throw error

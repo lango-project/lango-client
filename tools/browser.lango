@@ -1,0 +1,23 @@
+import js "node:child_process" as child
+import js "node:path" as path
+import js global process
+import js global Object
+
+export main(args)
+
+main(args)
+    env = Object/assign({}, process.env, {
+        PLAYWRIGHT_BROWSERS_PATH: path/resolve(".test-output/browsers")
+    })
+    command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/browser.lango", "--build-dir", ".test-output/browser"]
+    if args[0] == "install"
+        command = ["node_modules/playwright/cli.js", "install", "chromium", "--only-shell"]
+    result = child/spawnSync(process.execPath, command, {
+        env: env
+        stdio: "inherit"
+    })
+    if result.error != null
+        throw "${result.error}"
+    if result.status != 0
+        throw "Browser command failed: ${result.status}"
+    return null

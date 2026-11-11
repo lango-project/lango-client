@@ -1,0 +1,212 @@
+import js "playwright" as playwright
+import js "node:http" as http
+import js "node:fs" as fs
+import js "node:path" as path
+import js global Promise
+
+global requests = []
+
+test "browser boot loads a scoped template and sends form values with opaque tokens"
+    server = http/createServer(serve)
+    browser = null
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture errorHandler
+        capture state
+        capture server
+        state.page = page
+        page.on("pageerror", errorHandler)
+        page.setDefaultTimeout(10000)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/admin/users")
+      then(ignored)
+        capture state
+        return state.page.getByRole("button", {
+            name: "Save"
+        }).waitFor()
+      then(ignored)
+        capture state
+        global requests
+        assert requests[0].url == "/"
+        assert requests[1].url == "/admin"
+        assert requests[2].url == "/admin/users"
+        return state.page.getByRole("textbox", {
+            name: "Name"
+        }).fill("Bob")
+      then(ignored)
+        capture state
+        return state.page.getByRole("button", {
+            name: "Save"
+        }).click()
+      then(ignored)
+        capture state
+        return state.page.getByRole("button", {
+            name: "Saved"
+        }).waitFor()
+      then(ignored)
+        global requests
+        assert requests.length == 4
+        assert requests[3].url == "/save"
+        assert requests[3].authorization == "Bearer page-token"
+        assert requests[3].input.name == "Bob"
+        assert requests[3].input.save == null
+        assert requests[3].input.hidden == "secret"
+      then(ignored)
+        capture state
+        return state.page.getByRole("button", {
+            name: "Saved"
+        }).click()
+      then(ignored)
+        capture state
+        return state.page.getByText("Other page", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture state
+        assert state.page.url().endsWith("/admin/other")
+        return state.page.goBack()
+      then(ignored)
+        capture state
+        return state.page.getByRole("button", {
+            name: "Save"
+        }).waitFor()
+      then(ignored)
+        global requests
+        assert requests.length == 7
+        assert requests[4].input.name == "Normalized"
+        assert requests[5].url == "/admin/other"
+        assert requests[6].url == "/admin/users"
+      finally
+        capture state
+        capture server
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+browserError(error)
+    println("Browser error: ${error}")
+
+serve(req, res)
+    if req.method == "POST"
+        body = {
+            text: ""
+        }
+        req.on("data", (chunk)
+            capture body
+            body.text = "${body.text}${chunk}"
+        )
+        req.on("end", ()
+            capture req
+            capture res
+            capture body
+            respond(req, res, from_json(body.text))
+        )
+        return null
+    url = req.url
+    if url == "/admin/users" or url == "/"
+        url = "/index.html"
+    file = path/join("dist", url)
+    if !fs/existsSync(file) or !fs/statSync(file).isFile()
+        res.writeHead(404)
+        res.end()
+        return null
+    type = "text/javascript"
+    if url.endsWith(".html")
+        type = "text/html"
+    if url.endsWith(".css")
+        type = "text/css"
+    res.setHeader("Content-Type", type)
+    res.end(fs/readFileSync(file))
+    return null
+
+respond(req, res, input)
+    global requests
+    requests.add({
+        url: req.url
+        input: input
+        authorization: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "start-token")
+    switch req.url
+      case "/"
+          res.end(to_json({
+              templates: ["/admin"]
+          }))
+      case "/admin"
+          res.end(to_json({
+              view: {
+                  type: "form"
+                  controls: [{
+                      type: "form"
+                      name: "__content__"
+                      controls: []
+                  }]
+              }
+          }))
+      case "/admin/users"
+          res.setHeader("x-lango-token", "page-token")
+          res.end(to_json({
+              view: {
+                  type: "form"
+                  controls: [{
+                      type: "input"
+                      name: "name"
+                      label: "Name"
+                      value: "Alice"
+                  }, {
+                      type: "value"
+                      name: "hidden"
+                      value: "secret"
+                  }, {
+                      type: "button"
+                      name: "save"
+                      caption: "Save"
+                      url: "/save"
+                  }]
+              }
+          }))
+      case "/save"
+          if input.name == "Normalized"
+              res.end(to_json({
+                  cmds: [{
+                      type: "redirect"
+                      url: "/admin/other"
+                  }]
+              }))
+              return null
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "save"
+                  caption: "Saved"
+              }, {
+                  type: "values"
+                  values: {
+                      name: "Normalized"
+                  }
+              }]
+          }))
+      case "/admin/other"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Other page"
+              }
+          }))
+    return null

@@ -1,0 +1,221 @@
+import js global Object
+import js global Promise
+import js global URL
+import "./form"
+    class Form
+
+export class App(host, renderer)
+    properties
+        forms
+        root
+        renderer
+    methods
+        start()
+        post(url, input, token)
+        saveToken(token)
+        send(form, url)
+        drain()
+        execute(job)
+        navigate(url, push = true)
+        selectTemplate(path)
+        command(form, cmd)
+        dispose()
+
+App(host, renderer)
+    @host = host
+    @renderer = renderer
+    @forms = []
+    @queue = []
+    @active = []
+    @disposed = false
+    @root = null
+    @events = {}
+    @template = null
+
+App:saveToken(token)
+    try
+        @host.storage.setItem("lango.token", token)
+    catch error
+        return null
+    return null
+
+App:post(url, input, token)
+    target = new URL(url, @host.location.href)
+    if target.origin != @host.location.origin
+        throw "UI requests must use the current origin"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    if token != null
+        headers.Authorization = "Bearer ${token}"
+    return chain @host.fetch("${target.pathname}${target.search}", {
+        method: "POST"
+        headers: headers
+        body: to_json(input)
+    })
+      then(res)
+        if !res.ok
+            throw "HTTP ${res.status}"
+        return chain res.json()
+          then(body)
+            capture res
+            if !is_object(body) or is_array(body)
+                throw "UI response must be a map"
+            return {
+                token: res.headers.get("x-lango-token")
+                body: body
+            }
+
+App:start()
+    token = null
+    try
+        token = @host.storage.getItem("lango.token")
+    catch error
+        token = null
+    return chain post("/", {}, token)
+      then(packet)
+        @events = packet.body
+        @root = new Form(@this, null, packet.token)
+        @root.element = @host.mount
+        @root.setToken(packet.token)
+        return navigate(@host.location.pathname, false)
+
+App:send(form, url)
+    if @disposed or form.disposed
+        return Promise/reject("Form is disposed")
+    pending = new Promise((resolve, reject)
+        capture form
+        capture url
+        @queue.add({
+            form: form
+            url: url
+            resolve: resolve
+            reject: reject
+        })
+        drain()
+    )
+    return pending
+
+App:drain()
+    for @queue.slice() as job
+        blocked = false
+        for @active as running
+            if job.form.related(running.form)
+                blocked = true
+        for @queue as earlier
+            if earlier == job
+                break
+            if job.form.related(earlier.form)
+                blocked = true
+        if !blocked
+            @queue.splice(@queue.indexOf(job), 1)
+            @active.add(job)
+            execute(job)
+    return null
+
+App:execute(job)
+    form = job.form
+    return chain Promise/resolve(null)
+      then(ignored)
+        capture form
+        capture job
+        if form.disposed
+            throw "Form is disposed"
+        @renderer.waiting(form, true)
+        return post(job.url, form.getValue(), form.token)
+      then(packet)
+        capture form
+        form.handle(packet)
+      then(ignored)
+        capture job
+        job.resolve(null)
+      catch(error)
+        capture job
+        job.reject(error)
+      finally
+        capture job
+        capture form
+        @renderer.waiting(form, false)
+        @active.splice(@active.indexOf(job), 1)
+        drain()
+
+App:navigate(url, push = true)
+    target = new URL(url, @host.location.href)
+    if target.origin != @host.location.origin
+        throw "UI navigation must use the current origin"
+    path = target.pathname
+    if path == "/"
+        path = "/index"
+    template = selectTemplate(path)
+    ready = Promise/resolve(null)
+    if template != @template
+        if template != null
+            ready = @root.send(template)
+          else
+              @template = null
+    return chain ready
+      then(ignored)
+        capture template
+        capture path
+        @template = template
+        form = @root
+        if template != null
+            form = @root.find("__content__")
+        return form.send(path)
+      then(ignored)
+        capture target
+        capture push
+        if push
+            @host.history.pushState(null, "", "${target.pathname}${target.search}${target.hash}")
+        return null
+
+App:selectTemplate(path)
+    urls = @events.templates
+    if urls == null
+        return null
+    selected = null
+    for urls as url
+        if !is_string(url) or !url.startsWith("/") or url == "/" or url.endsWith("/")
+            throw "Invalid template URL"
+        if path == url or path.startsWith("${url}/")
+            if selected == null or url.length > selected.length
+                selected = url
+    if path == selected
+        throw "Template URLs cannot be used as page URLs"
+    return selected
+
+App:command(form, cmd)
+    switch cmd.type
+      case "values"
+          form.setValue(cmd.values)
+      case "setUrl"
+          target = new URL(cmd.url, @host.location.href)
+          if target.origin != @host.location.origin
+              throw "UI URL must use the current origin"
+          @host.history.pushState(null, "", "${target.pathname}${target.search}${target.hash}")
+      case "redirect"
+          action = ()
+              capture cmd
+              chain navigate(cmd.url)
+                catch(error)
+                  capture form
+                  @renderer.reportError(form, error)
+          @host.defer(action)
+      case "disable"
+          form.find(cmd.name).setDisabled(true)
+      case "enable"
+          form.find(cmd.name).setDisabled(false)
+      case "changeCaption"
+          form.find(cmd.name).setCaption(cmd.caption)
+      else
+          throw "Unsupported UI command: ${cmd.type}"
+    return null
+
+App:dispose()
+    @disposed = true
+    if @root != null
+        @root.dispose()
+    for @queue as job
+        job.reject("Application is disposed")
+    @queue = []
+    return null

@@ -1,0 +1,209 @@
+import js "node:assert/strict" as check
+import js global Promise
+import js global Object
+import "../app"
+    class App
+import "../form"
+    class Form
+
+test "nested values preserve null and inherited values write through"
+    app = new App({}, {})
+    root = new Form(app)
+    root.register("name", value("Alice"))
+    root.register("save", value(null))
+    child = new Form(app, root)
+    child.inheritedNames = ["name"]
+    child.register("age", value(0))
+    root.register("child", child)
+    check/deepStrictEqual(from_json(to_json(root.getValue())), {
+        name: "Alice"
+        save: null
+        child: {
+            age: 0
+            name: "Alice"
+        }
+    })
+    child.setValue({
+        name: "Bob"
+    })
+    assert root.find("name").getValue() == "Bob"
+    assert root.find("child/age").getValue() == 0
+
+test "opaque tokens persist unchanged and storage failure does not break requests"
+    saved = []
+    store = (key, token)
+        capture saved
+        saved.add(token)
+    app = new App({
+        storage: {
+            setItem: store
+        }
+    }, {})
+    form = new Form(app)
+    form.setToken("opaque-not-a-jwt")
+    assert form.token == "opaque-not-a-jwt"
+    assert saved[0] == form.token
+    broken = new App({}, {})
+    other = new Form(broken)
+    other.setToken("still-works")
+
+test "parent and child requests serialize while unrelated forms run concurrently"
+    calls = []
+    app = application(calls)
+    root = new Form(app)
+    child = new Form(app, root)
+    sibling = new Form(app)
+    first = root.send("/first")
+    second = child.send("/second")
+    third = sibling.send("/third")
+    return chain Promise/resolve(null)
+      then(ignored)
+        capture calls
+        capture first
+        capture third
+        assert calls.length == 2
+        assert calls[0].url == "/first"
+        assert calls[1].url == "/third"
+        calls[0].resolve(reply("first-token"))
+        calls[1].resolve(reply("third-token"))
+        return Promise/all([first, third])
+      then(ignored)
+        capture calls
+        capture second
+        assert calls.length == 3
+        assert calls[2].url == "/second"
+        calls[2].resolve(reply("second-token"))
+        return second
+      then(ignored)
+        capture root
+        capture child
+        capture sibling
+        assert root.token == "first-token"
+        assert child.token == "second-token"
+        assert sibling.token == "third-token"
+
+test "failed sends are not retried and do not block queued requests"
+    calls = []
+    app = application(calls)
+    form = new Form(app)
+    first = chain form.send("/fail")
+      catch(error)
+        return "failed"
+    second = form.send("/next")
+    return chain Promise/resolve(null)
+      then(ignored)
+        capture calls
+        capture first
+        assert calls.length == 1
+        calls[0].resolve({
+            ok: false
+            status: 500
+        })
+        return first
+      then(result)
+        assert result == "failed"
+        return Promise/resolve(null)
+      then(ignored)
+        capture calls
+        capture second
+        assert calls.length == 2
+        calls[1].resolve(reply(null))
+        return second
+
+test "view and commands observe the response token first"
+    seen = []
+    store = (key, token)
+        capture seen
+        seen.add(token)
+    show = (form, view)
+        capture seen
+        seen.add(form.token)
+    app = new App({
+        storage: {
+            setItem: store
+        }
+    }, {
+        show: show
+    })
+    form = new Form(app)
+    input = value("before")
+    form.register("input", input)
+    form.handle({
+        token: "fresh"
+        body: {
+            view: {}
+            cmds: [{
+                type: "values"
+                values: {
+                    input: "after"
+                }
+            }]
+        }
+    })
+    assert seen[0] == "fresh"
+    assert seen[1] == "fresh"
+    assert input.getValue() == "after"
+
+value(initial)
+    state = {
+        value: initial
+    }
+    get = ()
+        capture state
+        return state.value
+    set = (next)
+        capture state
+        state.value = next
+        return state.value
+    return {
+        getValue: get
+        setValue: set
+        dispose: nothing
+    }
+
+application(calls)
+    fetch = (url, options)
+        pending = new Promise((resolve)
+            capture calls
+            capture url
+            capture options
+            calls.add({
+                url: url
+                options: options
+                resolve: resolve
+            })
+        )
+        return pending
+    return new App({
+        location: {
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        storage: {
+            setItem: discard
+        }
+        fetch: fetch
+    }, {
+        waiting: discard
+    })
+
+reply(token)
+    get = (name)
+        capture token
+        return token
+    return {
+        ok: true
+        headers: {
+            get: get
+        }
+        json: emptyReply
+    }
+
+emptyReply()
+    return Promise/resolve({})
+
+nothing()
+    return null
+
+discard(first, second)
+    return null
