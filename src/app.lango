@@ -3,12 +3,15 @@ import js global Promise
 import js global URL
 import "./form"
     class Form
+import "./heartbeat"
+    class Heartbeat
 
 export class App(host, renderer)
     properties
         forms
         root
         renderer
+        heartbeat
     methods
         start()
         post(url, input, token)
@@ -18,6 +21,8 @@ export class App(host, renderer)
         execute(job)
         navigate(url, push = true)
         selectTemplate(path)
+        ping()
+        executePing(job)
         command(form, cmd)
         dispose()
 
@@ -31,6 +36,8 @@ App(host, renderer)
     @root = null
     @events = {}
     @template = null
+    @heartbeat = null
+    @pingJob = null
 
 App:saveToken(token)
     try
@@ -75,10 +82,16 @@ App:start()
     return chain post("/", {}, token)
       then(packet)
         @events = packet.body
+        if @events.pingUrl != null
+            @heartbeat = new Heartbeat(@this, @host, @events.pingUrl)
         @root = new Form(@this, null, packet.token)
         @root.element = @host.mount
         @root.setToken(packet.token)
-        return navigate(@host.location.pathname, false)
+        return chain navigate(@host.location.pathname, false)
+          then(ignored)
+            if @heartbeat != null
+                @heartbeat.start()
+            return null
 
 App:send(form, url)
     if @disposed or form.disposed
@@ -97,6 +110,11 @@ App:send(form, url)
     return pending
 
 App:drain()
+    if @pingJob != null
+        if @active.length == 0 and !@pingJob.running
+            @pingJob.running = true
+            executePing(@pingJob)
+        return null
     for @queue.slice() as job
         blocked = false
         for @active as running
@@ -112,6 +130,35 @@ App:drain()
             @active.add(job)
             execute(job)
     return null
+
+App:ping()
+    if @disposed or @heartbeat == null
+        return Promise/resolve(null)
+    if @pingJob != null
+        return @pingJob.promise
+    deferred = Promise/withResolvers()
+    @pingJob = {
+        promise: deferred.promise
+        resolve: deferred.resolve
+        reject: deferred.reject
+        running: false
+    }
+    drain()
+    return deferred.promise
+
+App:executePing(job)
+    return chain Promise/resolve(null)
+      then(ignored)
+        return @heartbeat.exchange()
+      then(ignored)
+        capture job
+        job.resolve(null)
+      catch(error)
+        capture job
+        job.reject(error)
+      finally
+        @pingJob = null
+        drain()
 
 App:execute(job)
     form = job.form
@@ -157,10 +204,13 @@ App:navigate(url, push = true)
       then(ignored)
         capture template
         capture path
+        capture Form
         @template = template
         form = @root
         if template != null
             form = @root.find("__content__")
+            if !is_kindof(form, Form)
+                throw "Template requires a __content__ form"
         return form.send(path)
       then(ignored)
         capture target
@@ -172,14 +222,20 @@ App:navigate(url, push = true)
 App:selectTemplate(path)
     urls = @events.templates
     if urls == null
-        return null
-    selected = null
+        urls = []
+    selected = @events.defaultTemplate
+    if path == selected
+        throw "Template URLs cannot be used as page URLs"
+    best = 0
     for urls as url
         if !is_string(url) or !url.startsWith("/") or url == "/" or url.endsWith("/")
             throw "Invalid template URL"
+        if path == url
+            throw "Template URLs cannot be used as page URLs"
         if path == url or path.startsWith("${url}/")
-            if selected == null or url.length > selected.length
+            if url.length > best
                 selected = url
+                best = url.length
     if path == selected
         throw "Template URLs cannot be used as page URLs"
     return selected
@@ -213,8 +269,10 @@ App:command(form, cmd)
 
 App:dispose()
     @disposed = true
-    if @root != null
-        @root.dispose()
+    if @heartbeat != null
+        @heartbeat.dispose()
+    for @forms.slice() as form
+        form.dispose()
     for @queue as job
         job.reject("Application is disposed")
     @queue = []

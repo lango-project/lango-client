@@ -1,0 +1,246 @@
+import js global Promise
+import js global setTimeout
+import "../app"
+    class App
+import "../form"
+    class Form
+import "../heartbeat"
+    class Heartbeat
+
+class Harness()
+    properties
+        app
+        calls
+        clock
+        errors
+        host
+    methods
+        form(token, parent = null)
+        reply(index, body, token = null)
+
+Harness()
+    @calls = []
+    @errors = []
+    @clock = 0
+    clock = ()
+        return @clock
+    fetch = (url, options)
+        pending = new Promise((resolve)
+            capture url
+            capture options
+            @calls.add({
+                url: url
+                input: from_json(options.body)
+                headers: options.headers
+                resolve: resolve
+            })
+        )
+        return pending
+    report = (form, error)
+        @errors.add(error)
+    host = {
+        location: {
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        fetch: fetch
+        now: clock
+    }
+    @host = host
+    @app = new App(host, {
+        waiting: nothing
+        reportError: report
+    })
+    @app.heartbeat = new Heartbeat(@app, host, "/heartbeat")
+
+Harness:form(token, parent = null)
+    result = new Form(@app, parent)
+    result.setToken(token)
+    return result
+
+Harness:reply(index, body, token = null)
+    get = (name)
+        capture token
+        return token
+    json = ()
+        capture body
+        return Promise/resolve(body)
+    @calls[index].resolve({
+        ok: true
+        headers: {
+            get: get
+        }
+        json: json
+    })
+    return null
+
+nothing(first, second)
+    return null
+
+turn()
+    pending = new Promise((resolve)
+        setTimeout(resolve, 0)
+    )
+    return pending
+
+test "active forms do not postpone idle tokens and shared tokens renew together"
+    h = new Harness()
+    idle = h.form("idle")
+    shared = h.form("idle")
+    active = h.form("active")
+    h.clock = 30000
+    active.setToken("active-new")
+    h.clock = 60000
+    pending = h.app.heartbeat.tick()
+    return chain turn()
+      then(ignored)
+        capture h
+        capture pending
+        assert h.calls.length == 1
+        assert h.calls[0].input.tokens.length == 1
+        assert h.calls[0].input.tokens[0] == "idle"
+        assert h.calls[0].headers.Authorization == "Bearer active-new"
+        h.reply(0, {
+            tokens: [{
+                previous: "idle"
+                token: "idle-new"
+                status: 200
+            }]
+        })
+        return pending
+      then(ignored)
+        capture idle
+        capture shared
+        capture active
+        assert idle.token == "idle-new"
+        assert shared.token == "idle-new"
+        assert active.token == "active-new"
+
+test "Ping waits for running sends, recomputes due tokens and blocks new sends"
+    h = new Harness()
+    running = h.form("running")
+    idle = h.form("idle")
+    sent = running.send("/first")
+    h.clock = 60000
+    ping = h.app.heartbeat.tick()
+    queued = idle.send("/queued")
+    return chain turn()
+      then(ignored)
+        capture h
+        capture sent
+        assert h.calls.length == 1
+        h.reply(0, {}, "running-new")
+        return sent
+      then(ignored)
+        return Promise/resolve(null)
+      then(ignored)
+        capture h
+        capture ping
+        assert h.calls.length == 2
+        assert h.calls[1].url == "/heartbeat"
+        assert h.calls[1].input.tokens.length == 1
+        assert h.calls[1].input.tokens[0] == "idle"
+        h.reply(1, {
+            tokens: [{
+                previous: "idle"
+                token: "idle-new"
+                status: 200
+            }]
+        })
+        return ping
+      then(ignored)
+        capture h
+        capture queued
+        assert h.calls.length == 3
+        assert h.calls[2].url == "/queued"
+        assert h.calls[2].headers.Authorization == "Bearer idle-new"
+        h.reply(2, {})
+        return queued
+
+test "Ping failures preserve tokens and do not retry before the next minute"
+    h = new Harness()
+    form = h.form("bad")
+    h.clock = 60000
+    pending = h.app.heartbeat.tick()
+    return chain turn()
+      then(ignored)
+        capture h
+        capture pending
+        h.reply(0, {
+            tokens: [{
+                previous: "bad"
+                token: null
+                status: 401
+            }]
+        })
+        return pending
+      then(ignored)
+        capture h
+        capture form
+        assert form.token == "bad"
+        assert h.errors.length == 1
+        h.clock = 61000
+        assert h.app.heartbeat.due().length == 0
+        h.clock = 120000
+        assert h.app.heartbeat.due().length == 1
+
+test "disposed forms and changed tokens cannot receive stale Ping results"
+    h = new Harness()
+    removed = h.form("removed")
+    changed = h.form("changed")
+    h.clock = 60000
+    pending = h.app.heartbeat.tick()
+    return chain turn()
+      then(ignored)
+        capture h
+        capture pending
+        capture removed
+        capture changed
+        removed.dispose()
+        changed.setToken("changed-after-snapshot")
+        h.reply(0, {
+            tokens: [{
+                previous: "removed"
+                token: "removed-new"
+                status: 200
+            }, {
+                previous: "changed"
+                token: "changed-new"
+                status: 200
+            }]
+        })
+        return pending
+      then(ignored)
+        capture changed
+        capture removed
+        assert changed.token == "changed-after-snapshot"
+        assert removed.token == "removed"
+
+test "the timer follows the earliest token deadline and is canceled on disposal"
+    h = new Harness()
+    timers = []
+    canceled = []
+    schedule = (action, delay)
+        capture timers
+        timer = {
+            action: action
+            delay: delay
+        }
+        timers.add(timer)
+        return timer
+    cancel = (timer)
+        capture canceled
+        canceled.add(timer)
+    h.host.schedule = schedule
+    h.host.cancelTimer = cancel
+    h.form("idle")
+    active = h.form("active")
+    h.app.heartbeat.start()
+    assert timers[0].delay == 60000
+    h.clock = 30000
+    active.setToken("active-new")
+    assert canceled.length == 1
+    assert timers[1].delay == 30000
+    h.app.dispose()
+    assert canceled.length == 2
+    assert h.app.forms.length == 0

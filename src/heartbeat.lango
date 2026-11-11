@@ -1,0 +1,167 @@
+import js global Object
+import js global Reflect
+import js global Date
+import js global Math
+import js global Promise
+
+export class Heartbeat(app, host, url)
+    methods
+        now()
+        observe(token)
+        live()
+        due()
+        start()
+        tick()
+        exchange()
+        batch(pending, tokens)
+        apply(tokens, results)
+        dispose()
+
+Heartbeat(app, host, url)
+    @app = app
+    @host = host
+    @url = url
+    @times = Object/create(null)
+    @attempts = Object/create(null)
+    @timer = null
+    @disposed = false
+    @started = false
+
+Heartbeat:now()
+    if @host.now != null
+        return @host.now()
+    return Date/now()
+
+Heartbeat:observe(token)
+    @times[token] = now()
+    if @started
+        start()
+    return null
+
+Heartbeat:live()
+    result = []
+    for @app.forms as form
+        if !form.disposed and form.token != null and !result.includes(form.token)
+            result.add(form.token)
+    return result
+
+Heartbeat:due()
+    current = now()
+    tokens = live()
+    for Object/keys(@times) as token
+        if !tokens.includes(token)
+            Reflect/deleteProperty(@times, token)
+            Reflect/deleteProperty(@attempts, token)
+    result = []
+    for tokens as token
+        if !(token in @times)
+            @times[token] = current
+        last = @times[token]
+        if token in @attempts
+            if @attempts[token] > last
+                last = @attempts[token]
+        if current - last >= 60000
+            result.add(token)
+    return result
+
+Heartbeat:start()
+    @started = true
+    if @disposed or @host.schedule == null
+        return null
+    if @timer != null
+        @host.cancelTimer(@timer)
+        @timer = null
+    current = now()
+    tokens = live()
+    if tokens.length == 0
+        return null
+    delay = 60000
+    for tokens as token
+        if !(token in @times)
+            @times[token] = current
+        last = @times[token]
+        if token in @attempts
+            if @attempts[token] > last
+                last = @attempts[token]
+        delay = Math/min(delay, Math/max(1, 60000 - current + last))
+    action = ()
+        @timer = null
+        tick()
+    @timer = @host.schedule(action, delay)
+    return null
+
+Heartbeat:tick()
+    if @disposed
+        return Promise/resolve(null)
+    pending = Promise/resolve(null)
+    if due().length > 0
+        pending = @app.ping()
+    return chain pending
+      catch(error)
+        if !@disposed and @app.root != null
+            @app.renderer.reportError(@app.root, error)
+      finally
+        start()
+
+Heartbeat:exchange()
+    if @disposed
+        return Promise/resolve(null)
+    tokens = due()
+    pending = Promise/resolve(null)
+    loop while tokens.length > 0
+        pending = batch(pending, tokens.splice(0, 64))
+    return pending
+
+Heartbeat:batch(pending, tokens)
+    return chain pending
+      then(ignored)
+        capture tokens
+        if @disposed
+            return null
+        header = null
+        newest = -1
+        for live() as token
+            if @times[token] > newest
+                header = token
+                newest = @times[token]
+        if header == null
+            return null
+        current = now()
+        for tokens as token
+            @attempts[token] = current
+        return chain @app.post(@url, {
+            tokens: tokens
+        }, header)
+          then(packet)
+            capture tokens
+            if !@disposed
+                apply(tokens, packet.body.tokens)
+            return null
+
+Heartbeat:apply(tokens, results)
+    if !is_array(results) or results.length != tokens.length
+        throw "Invalid Ping response"
+    seen = []
+    for results as item
+        if !is_object(item) or !tokens.includes(item.previous) or seen.includes(item.previous)
+            throw "Invalid Ping response"
+        if !is_number(item.status) or item.status < 200 or item.status > 599
+            throw "Invalid Ping status"
+        if item.status == 200 and (!is_string(item.token) or item.token == "")
+            throw "Invalid Ping token"
+        seen.add(item.previous)
+    for results as item
+        for @app.forms.slice() as form
+            if !form.disposed and form.token == item.previous
+                if item.status == 200
+                    form.setToken(item.token)
+                  else
+                      @app.renderer.reportError(form, "HTTP ${item.status}")
+    return null
+
+Heartbeat:dispose()
+    @disposed = true
+    if @timer != null
+        @host.cancelTimer(@timer)
+        @timer = null
+    return null

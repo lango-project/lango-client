@@ -67,6 +67,22 @@ The initial Bootstrap renderer supports `form`, `container`, `row`, `col`,
 fail explicitly. Input labels are currently exposed through `aria-label`;
 visible field labels and descriptions remain part of the renderer work.
 
+## Per-token keepalive
+
+The client tracks successful response times per opaque token string. An active
+form cannot postpone another form's renewal. One app timer follows the earliest
+60-second deadline; equal token strings are sent once and their replacements
+update every live form still holding that string. Disposed forms do not
+participate, and stale results cannot overwrite a subsequently changed token.
+
+Before Ping, current sends finish and new sends remain queued. Due tokens are
+recomputed after those sends finish. Batches contain at most 64 tokens and use
+the most recently refreshed live token as the Bearer credential. A batch returns
+individual replacement tokens and statuses; JWT contents are never decoded.
+Failed entries retain their tokens and wait until the next scheduled minute.
+Business requests are never automatically replayed. Application disposal
+cancels the timer.
+
 ## Custom controls
 
 The package exports `App`, `Form`, `BootstrapRenderer`, `Control`,
@@ -84,15 +100,14 @@ assigned through `textContent`; field values use DOM properties.
 
 ## Integration still required
 
-- The current Lango UI bootstrap advertises only lifecycle URLs. Scoped template
-  loading is tested against an optional `templates` array of reserved URLs such
-  as `['/admin']`; this metadata still needs a matching Lango UI implementation.
-  A template must contain a named `__content__` form. `/admin/...` matches
-  `/admin`; `/administrator/...` does not. Empty/default template metadata is
-  not supported yet, and a template URL itself is not a page URL.
-- Per-token freshness tracking and batch Ping are not implemented. They require
-  the agreed server validation renewal and a batch lifecycle protocol. The
-  current UI Ping accepts only a single Bearer token and an empty body.
+- Template metadata is now supplied by Lango UI: `templates` contains reserved
+  scope URLs and `defaultTemplate` optionally names the reserved default layout
+  endpoint. Templates contain a named `__content__` Form. Scope matching uses
+  segment boundaries and the longest matching prefix; the default handles
+  unmatched pages. Template addresses themselves are not page URLs.
+- The lifecycle implementation requires the updated Lango UI batch Ping and
+  Lango Server token-refresh support. Publish/deploy the server first, then UI,
+  and rebuild the client. Optional absent lifecycle channels remain disabled.
 - The rest of the control catalog, validation presentation, resource commands
   (timers and long polling), dialogs, toasts, and client error reporting remain
   to be implemented. Unexpected send/navigation errors currently use a simple

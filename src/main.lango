@@ -2,6 +2,7 @@ import js global document
 import js global window
 import js global fetch
 import js global setTimeout
+import js global clearTimeout
 import "./app"
     class App
 import "./renderer"
@@ -26,6 +27,8 @@ start()
         history: window.history
         fetch: request
         defer: defer
+        schedule: schedule
+        cancelTimer: cancelTimer
     }, renderer)
     click = (event)
         capture app
@@ -81,3 +84,10 @@ defer(action)
 
 request(url, options)
     return fetch(url, options)
+
+schedule(action, delay)
+    return setTimeout(action, delay)
+
+cancelTimer(timer)
+    clearTimeout(timer)
+    return null

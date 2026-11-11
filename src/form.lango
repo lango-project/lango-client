@@ -77,6 +77,8 @@ Form:setToken(token)
     if token != null
         @token = token
         @app.saveToken(token)
+        if @app.heartbeat != null
+            @app.heartbeat.observe(token)
     return @this
 
 Form:send(url)

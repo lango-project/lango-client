@@ -147,8 +147,10 @@ respond(req, res, input)
       case "/"
           res.end(to_json({
               templates: ["/admin"]
+              defaultTemplate: "/layout"
           }))
       case "/admin"
+      case "/layout"
           res.end(to_json({
               view: {
                   type: "form"
@@ -209,4 +211,54 @@ respond(req, res, input)
                   text: "Other page"
               }
           }))
+      case "/index"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Home page"
+              }
+          }))
     return null
+
+test "root startup loads the advertised default template before the index page"
+    global requests
+    requests = []
+    server = http/createServer(serve)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        state.page = page
+        return state.page.goto("http://127.0.0.1:${server.address().port}/")
+      then(ignored)
+        capture state
+        return state.page.getByText("Home page", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        global requests
+        assert requests.length == 3
+        assert requests[0].url == "/"
+        assert requests[1].url == "/layout"
+        assert requests[2].url == "/index"
+      finally
+        capture server
+        capture state
+        server.close()
+        if state.browser != null
+            return state.browser.close()
