@@ -1,0 +1,511 @@
+export definition()
+export reply(url)
+export exercise(page, records)
+
+definition()
+    return {
+        type: "form"
+        controls: [{
+            type: "input"
+            variant: "String"
+            name: "name"
+            label: "Name"
+            description: "Private name"
+            value: "Alice"
+        }, {
+            type: "input"
+            name: "search"
+            label: "Search"
+            url: "/forms/search"
+        }, {
+            type: "input"
+            variant: "Number"
+            name: "age"
+            label: "Age"
+            value: 0
+        }, {
+            type: "input"
+            variant: "Decimal"
+            name: "amount"
+            label: "Amount"
+            value: "12345678901234567890.123"
+        }, {
+            type: "input"
+            name: "notes"
+            label: "Notes"
+            lines: 3
+        }, {
+            type: "checkbox"
+            name: "approved"
+            label: "Approved"
+            value: false
+        }, {
+            type: "checkbox"
+            name: "maybe"
+            label: "Maybe"
+            indeterminate: true
+        }, {
+            type: "switch"
+            name: "active"
+            label: "Active"
+            value: true
+        }, {
+            type: "switch"
+            name: "locked"
+            label: "Locked"
+            value: true
+            readonly: true
+        }, {
+            type: "select"
+            name: "plan"
+            label: "Plan"
+            value: {
+                code: "basic"
+            }
+            options: [{
+                label: "Basic"
+                value: {
+                    code: "basic"
+                }
+            }, {
+                label: "Pro"
+                value: {
+                    code: "pro"
+                }
+            }]
+        }, {
+            type: "radio"
+            name: "shipping"
+            label: "Shipping"
+            selectedIndex: 0
+            options: [{
+                label: "Standard"
+                value: 0
+            }, {
+                label: "Express"
+                value: {
+                    code: "express"
+                }
+            }, {
+                label: "Unavailable"
+                value: 99
+                enabled: false
+            }]
+        }, {
+            type: "range"
+            name: "quantity"
+            label: "Quantity"
+            min: 0
+            max: 10
+            steps: 1
+            value: 5
+        }, {
+            type: "form"
+            name: "details"
+            inheritedNames: ["name"]
+            controls: detailsControls("London")
+        }, {
+            type: "button"
+            name: "validate"
+            caption: "Validate"
+            url: "/forms/validate"
+        }, {
+            type: "button"
+            caption: "Replace"
+            url: "/forms/replace"
+        }, {
+            type: "button"
+            caption: "Broken replacement"
+            url: "/forms/broken"
+        }, {
+            type: "button"
+            caption: "Reset"
+            url: "/forms/reset"
+        }]
+    }
+
+detailsControls(city)
+    return [{
+        type: "input"
+        name: "city"
+        label: "City"
+        value: city
+    }, {
+        type: "button"
+        name: "check"
+        caption: "Check"
+        url: "/details/validate"
+    }]
+
+reply(url)
+    switch url
+      case "/forms/validate"
+          return {
+              cmds: [{
+                  type: "invalid"
+                  name: "name"
+                  message: "<b>Name invalid</b>"
+              }, {
+                  type: "invalid"
+                  name: "age"
+                  message: "Age invalid"
+              }, {
+                  type: "invalid"
+                  name: "details/city"
+                  message: "City invalid"
+              }, {
+                  type: "changeCaption"
+                  name: "validate"
+                  caption: "Validated"
+              }, {
+                  type: "values"
+                  values: {
+                      search: "server-value"
+                      plan: {
+                          code: "basic"
+                      }
+                  }
+              }]
+          }
+      case "/details/validate"
+          return {
+              cmds: [{
+                  type: "changeCaption"
+                  name: "check"
+                  caption: "Checked"
+              }]
+          }
+      case "/forms/replace"
+          return {
+              cmds: [{
+                  type: "set"
+                  name: "details"
+                  control: {
+                      type: "form"
+                      inheritedNames: ["name"]
+                      controls: detailsControls("Paris")
+                  }
+              }, {
+                  type: "values"
+                  values: {
+                      "details/city": "Berlin"
+                  }
+              }]
+          }
+      case "/forms/broken"
+          return {
+              cmds: [{
+                  type: "set"
+                  name: "details"
+                  control: {
+                      type: "form"
+                      controls: [{
+                          type: "form"
+                          name: "orphan"
+                          controls: []
+                      }, {
+                          type: "unsupported"
+                      }]
+                  }
+              }]
+          }
+      case "/forms/search"
+          return {
+              cmds: [{
+                  type: "changeCaption"
+                  name: "validate"
+                  caption: "Search sent"
+              }]
+          }
+      case "/forms/reset"
+          return {
+              view: {
+                  type: "text"
+                  text: "Reset complete"
+              }
+          }
+    throw "Unknown form test route"
+
+exercise(page, records)
+    return chain page.getByRole("button", {
+        name: "Validate"
+        exact: true
+    }).waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("Name", {
+            exact: true
+        }).fill("Bob")
+      then(ignored)
+        capture page
+        return page.getByLabel("Age", {
+            exact: true
+        }).fill("42")
+      then(ignored)
+        capture page
+        return page.getByLabel("Notes", {
+            exact: true
+        }).fill("First\nSecond")
+      then(ignored)
+        capture page
+        return page.getByLabel("Approved", {
+            exact: true
+        }).check()
+      then(ignored)
+        capture page
+        return page.getByRole("switch", {
+            name: "Active"
+            exact: true
+        }).uncheck()
+      then(ignored)
+        capture page
+        return page.getByLabel("Plan", {
+            exact: true
+        }).selectOption({
+            index: 1
+        })
+      then(ignored)
+        capture page
+        return page.getByLabel("Express", {
+            exact: true
+        }).check()
+      then(ignored)
+        capture page
+        return page.getByRole("slider", {
+            name: "Quantity"
+        }).press("ArrowRight")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Validate"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Validated"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture records
+        input = records[3].input
+        assert input.name == "Bob"
+        assert input.age == 42
+        assert input.amount == "12345678901234567890.123"
+        assert input.notes == "First\nSecond"
+        assert input.approved == true
+        assert input.maybe == null
+        assert input.active == false
+        assert input.locked == true
+        assert input.plan.code == "pro"
+        assert input.shipping.code == "express"
+        assert input.quantity == 6
+        assert input.details.city == "London"
+        assert input.details.name == "Bob"
+      then(ignored)
+        capture page
+        return checkValidation(page)
+      then(ignored)
+        capture page
+        return page.waitForTimeout(650)
+      then(ignored)
+        capture records
+        assert records.length == 4
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Check"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Checked"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.locator(".invalid-feedback").count()
+      then(count)
+        capture page
+        assert count == 1
+        return page.getByText("Age invalid", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return checkCleared(page)
+      then(ignored)
+        capture page
+        return page.getByLabel("Age", {
+            exact: true
+        }).fill("")
+      then(ignored)
+        capture page
+        return replacement(page)
+      then(ignored)
+        capture page
+        capture records
+        assert records[4].authorization == "Bearer forms-token"
+        assert records[4].input.name == "Bob"
+        assert records[5].input.age == null
+        assert records[5].input.plan.code == "basic"
+        return page.getByRole("button", {
+            name: "Check"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Checked"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture records
+        capture page
+        assert records[6].authorization == "Bearer details-token"
+        assert records[6].input.city == "Berlin"
+        return rollback(page)
+      then(ignored)
+        capture page
+        capture records
+        return debounce(page, records)
+
+debounce(page, records)
+    return chain page.getByLabel("Search", {
+        exact: true
+    }).fill("h")
+      then(ignored)
+        capture page
+        return page.getByLabel("Search", {
+            exact: true
+        }).fill("hello")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Search sent"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        capture records
+        assert records.length == 9
+        assert records[8].url == "/forms/search"
+        assert records[8].input.search == "hello"
+        return page.getByLabel("Search", {
+            exact: true
+        }).fill("cancel-me")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Reset"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByText("Reset complete", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.waitForTimeout(650)
+      then(ignored)
+        capture records
+        assert records.length == 10
+        assert records[9].url == "/forms/reset"
+
+checkValidation(page)
+    return chain page.getByLabel("Name", {
+        exact: true
+    }).getAttribute("aria-invalid")
+      then(value)
+        capture page
+        assert value == "true"
+        return page.getByLabel("Name", {
+            exact: true
+        }).getAttribute("aria-describedby")
+      then(value)
+        capture page
+        assert value.split(" ").length == 2
+        return page.getByText("<b>Name invalid</b>", {
+            exact: true
+        }).count()
+      then(count)
+        capture page
+        assert count == 1
+        return page.locator("b").count()
+      then(count)
+        capture page
+        assert count == 0
+        return page.getByRole("switch", {
+            name: "Locked"
+        }).isDisabled()
+      then(disabled)
+        assert disabled
+
+checkCleared(page)
+    return chain page.getByLabel("Name", {
+        exact: true
+    }).getAttribute("aria-invalid")
+      then(value)
+        capture page
+        assert value == null
+        return page.getByLabel("Name", {
+            exact: true
+        }).getAttribute("aria-describedby")
+      then(value)
+        capture page
+        assert value.split(" ").length == 1
+        return page.getByLabel("Age", {
+            exact: true
+        }).getAttribute("aria-invalid")
+      then(value)
+        assert value == "true"
+
+replacement(page)
+    return chain page.getByRole("button", {
+        name: "Replace"
+        exact: true
+    }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Check"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("City", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value == "Berlin"
+        return page.locator(".invalid-feedback").count()
+      then(count)
+        assert count == 0
+
+rollback(page)
+    return chain page.getByRole("button", {
+        name: "Broken replacement"
+        exact: true
+    }).click()
+      then(ignored)
+        capture page
+        return page.getByText("Unsupported control type: unsupported", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("City", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value == "Berlin"
+        return page.getByRole("button", {
+            name: "Checked"
+            exact: true
+        }).isEnabled()
+      then(enabled)
+        assert enabled

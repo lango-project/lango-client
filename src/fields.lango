@@ -1,0 +1,324 @@
+import js global document
+import js global Object
+import js global setTimeout
+import js global clearTimeout
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+    controlId()
+
+export sameValue(first, second)
+export class Field(form, props, input) : Control
+    properties
+        input
+        labelElement
+    methods
+        setDisabled(value)
+
+Field(form, props, input)
+    super(form, props, cloneMarkup("field", <div class="mb-3"></div>))
+    element = @element
+    @input = input
+    @readonly = props.readonly == true
+    @labelElement = null
+    input.id = controlId()
+    if props.label != null
+        @labelElement = document/createElement("label")
+        @labelElement.htmlFor = input.id
+        @labelElement.className = "form-label"
+        @labelElement.textContent = props.label
+        element.appendChild(@labelElement)
+    element.appendChild(input)
+    if props.description != null
+        description = document/createElement("div")
+        description.id = controlId()
+        description.className = "form-text"
+        description.textContent = props.description
+        element.appendChild(description)
+        input.setAttribute("aria-describedby", description.id)
+    if props.aria != null
+        for props.aria as name: value
+            input.setAttribute("aria-${name}", value)
+    input.required = props.required == true
+    input.readOnly = @readonly
+    if props.disableAutoComplete == true
+        input.autocomplete = "off"
+    setDisabled(props.disabled == true)
+    validationTarget(input)
+
+Field:setDisabled(value)
+    @input.disabled = value
+    if @readonly and (@input.tagName == "SELECT" or @input.tagName == "FIELDSET" or @input.type == "checkbox" or @input.type == "range")
+        @input.disabled = true
+    return @this
+
+export class Input(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+        changed()
+        dispose()
+
+Input(form, props)
+    super(form, props, inputElement(props))
+    input = @input
+    @numeric = input.type == "number"
+    @timer = null
+    @form = form
+    @url = props.url
+    if props.placeholder != null
+        input.placeholder = props.placeholder
+    if props.maxLength != null
+        input.maxLength = props.maxLength
+    if props.min != null
+        input.min = props.min
+    if props.max != null
+        input.max = props.max
+    setValue(props.value)
+    if @url != null
+        listener = ()
+            changed()
+        input.addEventListener("input", listener)
+        release = ()
+            capture input
+            capture listener
+            input.removeEventListener("input", listener)
+        @release.add(release)
+
+Input:getValue()
+    if @numeric
+        if @input.value == "" or @input.validity.badInput
+            return null
+        try
+            return @input.valueAsNumber
+        catch error
+            if error.message == "NonFiniteNumber"
+                return null
+            throw error
+    return @input.value
+
+Input:setValue(value)
+    if value == null
+        @input.value = ""
+      else
+          @input.value = "${value}"
+    return @this
+
+Input:changed()
+    if @timer != null
+        clearTimeout(@timer)
+    action = ()
+        @timer = null
+        if !@form.disposed
+            chain @form.send(@url)
+              catch(error)
+                @form.app.renderer.reportError(@form, error)
+    @timer = setTimeout(action, 500)
+    return null
+
+Input:dispose()
+    if @timer != null
+        clearTimeout(@timer)
+        @timer = null
+    return super.dispose()
+
+export class Checkbox(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+
+Checkbox(form, props)
+    super(form, props, cloneMarkup("checkbox", <input type="checkbox" class="form-check-input" />))
+    input = @input
+    @element.classList.add("form-check")
+    if @labelElement != null
+        @labelElement.className = "form-check-label"
+        @element.insertBefore(input, @labelElement)
+    initial = props.value
+    if props.indeterminate == true
+        initial = null
+    setValue(initial)
+
+Checkbox:getValue()
+    if @input.indeterminate
+        return null
+    return @input.checked
+
+Checkbox:setValue(value)
+    if value != null and !is_bool(value)
+        throw "Checkbox value must be boolean or null"
+    @input.indeterminate = value == null
+    @input.checked = value == true
+    return @this
+
+export class Switch(form, props) : Checkbox
+    methods
+        setValue(value)
+
+Switch(form, props)
+    super(form, props)
+    @element.classList.add("form-switch")
+    @input.setAttribute("role", "switch")
+    setValue(props.value)
+
+Switch:setValue(value)
+    if value == null
+        value = false
+    if !is_bool(value)
+        throw "Switch value must be boolean"
+    return super.setValue(value)
+
+export class Range(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+
+Range(form, props)
+    super(form, props, cloneMarkup("range", <input type="range" class="form-range" />))
+    input = @input
+    if props.min != null
+        input.min = props.min
+    if props.max != null
+        input.max = props.max
+    if props.steps != null
+        input.step = props.steps
+    if props.value != null
+        setValue(props.value)
+
+Range:getValue()
+    return @input.valueAsNumber
+
+Range:setValue(value)
+    if !is_number(value)
+        throw "Range value must be a number"
+    @input.value = "${value}"
+    return @this
+
+export class Select(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+
+Select(form, props)
+    super(form, props, cloneMarkup("select", <select class="form-select"></select>))
+    input = @input
+    @options = props.options
+    if @options == null
+        @options = []
+    for @options as option
+        node = document/createElement("option")
+        node.textContent = option.label
+        input.appendChild(node)
+    setValue(props.value)
+
+Select:getValue()
+    if @input.selectedIndex < 0
+        return null
+    return @options[@input.selectedIndex].value
+
+Select:setValue(value)
+    @input.selectedIndex = -1
+    index = 0
+    for @options as option
+        if sameValue(option.value, value)
+            @input.selectedIndex = index
+            break
+        index = index + 1
+    return @this
+
+export class Radio(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+
+Radio(form, props)
+    super(form, props, cloneMarkup("radio", <fieldset role="radiogroup"></fieldset>))
+    input = @input
+    if props.label != null
+        input.setAttribute("aria-label", props.label)
+    @options = props.options
+    if @options == null
+        @options = []
+    @choices = []
+    for @options as option
+        choice = cloneMarkup("radio-choice", <input type="radio" class="form-check-input" />)
+        choice.id = controlId()
+        choice.name = input.id
+        choice.disabled = option.enabled == false
+        choice.required = props.required == true
+        label = document/createElement("label")
+        label.htmlFor = choice.id
+        label.className = "form-check-label"
+        label.textContent = option.label
+        row = cloneMarkup("radio-row", <div class="form-check"></div>)
+        row.appendChild(choice)
+        row.appendChild(label)
+        input.appendChild(row)
+        @choices.add(choice)
+    if Object/hasOwn(props, "value")
+        setValue(props.value)
+      else
+          if props.selectedIndex != null and props.selectedIndex >= 0 and props.selectedIndex < @choices.length
+              selected = @choices[props.selectedIndex]
+              selected.checked = true
+
+Radio:getValue()
+    index = 0
+    for @choices as choice
+        if choice.checked
+            return @options[index].value
+        index = index + 1
+    return null
+
+Radio:setValue(value)
+    selected = false
+    index = 0
+    for @choices as choice
+        choice.checked = !selected and sameValue(@options[index].value, value)
+        if choice.checked
+            selected = true
+        index = index + 1
+    return @this
+
+sameValue(first, second)
+    if is_array(first)
+        if !is_array(second) or first.length != second.length
+            return false
+        index = 0
+        for first as item
+            if !sameValue(item, second[index])
+                return false
+            index = index + 1
+        return true
+    if is_object(first)
+        if !is_object(second) or is_array(second) or Object/keys(first).length != Object/keys(second).length
+            return false
+        for first as name: value
+            if !Object/hasOwn(second, name) or !sameValue(value, second[name])
+                return false
+        return true
+    return first == second
+
+inputElement(props)
+    input = cloneMarkup("input", <input class="form-control" />)
+    variant = props.variant
+    if variant == null
+        variant = "text"
+    variant = variant.toLowerCase()
+    if variant == "string"
+        variant = "text"
+    allowed = ["text", "email", "password", "search", "tel", "url", "number", "decimal", "money"]
+    if !allowed.includes(variant)
+        throw "Unsupported input variant: ${variant}"
+    if props.lines != null and props.lines > 1
+        if variant != "text"
+            throw "Multiline input requires text or String"
+        input = cloneMarkup("textarea", <textarea class="form-control"></textarea>)
+        input.rows = props.lines
+      else
+          input.type = variant
+          if variant == "decimal" or variant == "money"
+              input.type = "text"
+              input.inputMode = "decimal"
+    return input

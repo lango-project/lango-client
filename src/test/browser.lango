@@ -3,6 +3,10 @@ import js "node:http" as http
 import js "node:fs" as fs
 import js "node:path" as path
 import js global Promise
+import "./forms_browser"
+    alias formDefinition = definition()
+    alias formReply = reply(url)
+    alias exerciseForms = exercise(page, records)
 
 global requests = []
 
@@ -118,7 +122,7 @@ serve(req, res)
         )
         return null
     url = req.url
-    if url == "/admin/users" or url == "/"
+    if url == "/admin/users" or url == "/" or url == "/forms"
         url = "/index.html"
     file = path/join("dist", url)
     if !fs/existsSync(file) or !fs/statSync(file).isFile()
@@ -183,6 +187,20 @@ respond(req, res, input)
                   }]
               }
           }))
+      case "/forms"
+          res.setHeader("x-lango-token", "forms-token")
+          res.end(to_json({
+              view: formDefinition()
+          }))
+      case "/forms/validate"
+      case "/forms/replace"
+      case "/forms/broken"
+      case "/forms/search"
+      case "/forms/reset"
+          res.end(to_json(formReply(req.url)))
+      case "/details/validate"
+          res.setHeader("x-lango-token", "details-token")
+          res.end(to_json(formReply(req.url)))
       case "/save"
           if input.name == "Normalized"
               res.end(to_json({
@@ -256,6 +274,53 @@ test "root startup loads the advertised default template before the index page"
         assert requests[0].url == "/"
         assert requests[1].url == "/layout"
         assert requests[2].url == "/index"
+      finally
+        capture server
+        capture state
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "fields preserve typed values, validation scopes and form replacement identity"
+    global requests
+    requests = []
+    server = http/createServer(serve)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.on("pageerror", errorHandler)
+        page.setDefaultTimeout(10000)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/forms")
+      then(ignored)
+        capture state
+        global requests
+        return chain exerciseForms(state.page, requests)
+          catch(error)
+            capture state
+            return chain state.page.locator("#app").innerText()
+              then(text)
+                capture error
+                println("Form test DOM: ${text}")
+                throw error
       finally
         capture server
         capture state

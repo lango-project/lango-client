@@ -29,6 +29,26 @@ test "nested values preserve null and inherited values write through"
     assert root.find("name").getValue() == "Bob"
     assert root.find("child/age").getValue() == 0
 
+test "application listeners outlive form content resources and close on app disposal"
+    released = []
+    frame = ()
+        capture released
+        released.add("frame")
+    globalListener = ()
+        capture released
+        released.add("app")
+    app = new App({}, {})
+    form = new Form(app)
+    app.root = form
+    form.resources.add(frame)
+    app.resources.add(globalListener)
+    form.clearResources()
+    assert released.length == 1
+    assert released[0] == "frame"
+    app.dispose()
+    assert released.length == 2
+    assert released[1] == "app"
+
 test "opaque tokens persist unchanged and storage failure does not break requests"
     saved = []
     store = (key, token)

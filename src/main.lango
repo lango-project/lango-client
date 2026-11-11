@@ -60,7 +60,7 @@ start()
             capture pop
             document/removeEventListener("click", click)
             window.removeEventListener("popstate", pop)
-        resources = app.root.resources
+        resources = app.resources
         resources.add(release)
         return app
       catch(error)

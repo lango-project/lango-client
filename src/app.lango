@@ -12,6 +12,7 @@ export class App(host, renderer)
         root
         renderer
         heartbeat
+        resources
     methods
         start()
         post(url, input, token)
@@ -38,6 +39,7 @@ App(host, renderer)
     @template = null
     @heartbeat = null
     @pingJob = null
+    @resources = []
 
 App:saveToken(token)
     try
@@ -168,6 +170,7 @@ App:execute(job)
         capture job
         if form.disposed
             throw "Form is disposed"
+        form.clearValidation()
         @renderer.waiting(form, true)
         return post(job.url, form.getValue(), form.token)
       then(packet)
@@ -244,6 +247,13 @@ App:command(form, cmd)
     switch cmd.type
       case "values"
           form.setValue(cmd.values)
+      case "invalid"
+          form.find(cmd.name).setInvalid(cmd.message)
+      case "set"
+          targetForm = form.find(cmd.name)
+          if !is_kindof(targetForm, Form)
+              throw "Set requires a form target"
+          @renderer.show(targetForm, cmd.control)
       case "setUrl"
           target = new URL(cmd.url, @host.location.href)
           if target.origin != @host.location.origin
@@ -276,4 +286,7 @@ App:dispose()
     for @queue as job
         job.reject("Application is disposed")
     @queue = []
+    for @resources as release
+        release()
+    @resources = []
     return null

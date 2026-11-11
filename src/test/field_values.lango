@@ -1,0 +1,29 @@
+import "../fields"
+    sameValue(first, second)
+
+test "option values compare structured data without losing primitive types"
+    assert sameValue(null, null)
+    assert !sameValue(0, false)
+    assert !sameValue("1", 1)
+    assert !sameValue(null, "")
+    assert sameValue([1, "two", null], [1, "two", null])
+    assert !sameValue([1, 2], [2, 1])
+    assert !sameValue([], {})
+    assert sameValue({
+        code: "pro"
+        options: [1, null]
+    }, {
+        options: [1, null]
+        code: "pro"
+    })
+    assert !sameValue({
+        code: "pro"
+    }, {
+        code: "basic"
+    })
+
+test "prototype-like option keys remain data during comparison"
+    first = from_json("{\"__proto__\":{\"id\":1},\"constructor\":2}")
+    second = from_json("{\"constructor\":2,\"__proto__\":{\"id\":1}}")
+    assert sameValue(first, second)
+    assert !sameValue(first, {})

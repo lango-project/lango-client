@@ -21,6 +21,8 @@ export class Form(app, parent = null, token = null)
         send(url)
         handle(packet)
         related(other)
+        clearValidation()
+        clearResources()
         dispose()
 
 Form(app, parent = null, token = null)
@@ -73,6 +75,23 @@ Form:setValue(values)
         find(name).setValue(value)
     return @this
 
+Form:clearValidation()
+    for @owned as control
+        if control.clearValidation != null
+            control.clearValidation()
+    for @inheritedNames as name
+        source = find(name)
+        if source.clearValidation != null
+            source.clearValidation()
+    return null
+
+Form:clearResources()
+    resources = @resources
+    @resources = []
+    for resources as release
+        release()
+    return null
+
 Form:setToken(token)
     if token != null
         @token = token
@@ -115,9 +134,7 @@ Form:dispose()
     @disposed = true
     for @owned as control
         control.dispose()
-    for @resources as release
-        release()
-    @resources = []
+    clearResources()
     @controls = Object/create(null)
     alive = []
     for @app.forms as form

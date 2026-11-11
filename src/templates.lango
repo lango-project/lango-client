@@ -1,0 +1,29 @@
+import js global document
+import js global Object
+
+export createTemplate(xml)
+export cloneTemplate(template)
+export cloneMarkup(name, xml)
+export controlId()
+
+global templates = Object/create(null)
+global sequence = 0
+
+createTemplate(xml)
+    template = document/createElement("template")
+    template.innerHTML = "${xml}"
+    return template
+
+cloneTemplate(template)
+    return template.content.firstElementChild.cloneNode(true)
+
+cloneMarkup(name, xml)
+    global templates
+    if !(name in templates)
+        templates[name] = createTemplate(xml)
+    return cloneTemplate(templates[name])
+
+controlId()
+    global sequence
+    sequence = sequence + 1
+    return "lango-control-${sequence}"

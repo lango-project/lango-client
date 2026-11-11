@@ -4,7 +4,18 @@ import "./form"
     alias FormClass = class Form
 import "./renderer"
     alias RendererClass = class BootstrapRenderer
+import "./control"
     alias ControlClass = class Control
+    alias ValueClass = class Value
+import "./fields"
+    alias FieldClass = class Field
+    alias InputClass = class Input
+    alias CheckboxClass = class Checkbox
+    alias SwitchClass = class Switch
+    alias RangeClass = class Range
+    alias SelectClass = class Select
+    alias RadioClass = class Radio
+import "./templates"
     alias makeTemplate = createTemplate(xml)
     alias copyTemplate = cloneTemplate(template)
 
@@ -12,6 +23,14 @@ export global App
 export global Form
 export global BootstrapRenderer
 export global Control
+export global Value
+export global Field
+export global Input
+export global Checkbox
+export global Switch
+export global Range
+export global Select
+export global Radio
 export createTemplate(xml)
 export cloneTemplate(template)
 
@@ -19,6 +38,14 @@ global App = AppClass
 global Form = FormClass
 global BootstrapRenderer = RendererClass
 global Control = ControlClass
+global Value = ValueClass
+global Field = FieldClass
+global Input = InputClass
+global Checkbox = CheckboxClass
+global Switch = SwitchClass
+global Range = RangeClass
+global Select = SelectClass
+global Radio = RadioClass
 
 createTemplate(xml)
     return makeTemplate(xml)

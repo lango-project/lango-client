@@ -9,9 +9,11 @@
    freshness, deduplication, batch Ping and the app-wide send gate are in place.
    Application disposal cancels the keepalive timer. Client error event reporting
    remains open; business requests are never automatically retried.
-3. **Form interaction.** Add validation display/reset, replacement commands,
-   complete labels and common field variants. Test disposal and pending requests
-   during replacement and navigation.
+3. **Form interaction — implemented for common fields.** Validation display/reset,
+   Form content replacement, visible labels/descriptions, numeric/text/decimal
+   inputs, textarea, checkbox/switch, structured select/radio values and range.
+   Input debounce is canceled on disposal. Advanced input presentation and broader
+   pending-request/navigation cases remain open.
 4. **Control catalog and resources.** Implement the remaining declared controls,
    timer/long-poll ownership and cancellation, dialog and Toast behavior.
 5. **Application delivery.** Provide a reproducible application generator,

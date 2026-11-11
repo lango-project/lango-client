@@ -1,20 +1,22 @@
 import js global Object
 import js global document
+import js global Reflect
+import "./templates"
+    createTemplate(xml)
+    cloneTemplate(template)
+import "./control"
+    class Control
+    class Value
+import "./fields"
+    class Input
+    class Checkbox
+    class Switch
+    class Range
+    class Select
+    class Radio
 import "./form"
     class Form
 
-export createTemplate(xml)
-export cloneTemplate(template)
-export class Control(form, props, element)
-    properties
-        element
-        release
-    methods
-        getValue()
-        setValue(value)
-        setDisabled(value)
-        setCaption(value)
-        dispose()
 export class BootstrapRenderer()
     methods
         registerControlType(name, factory)
@@ -23,63 +25,21 @@ export class BootstrapRenderer()
         waiting(form, active)
         reportError(form, error)
 
-createTemplate(xml)
-    template = document/createElement("template")
-    template.innerHTML = "${xml}"
-    return template
-
-cloneTemplate(template)
-    return template.content.firstElementChild.cloneNode(true)
-
-Control(form, props, element)
-    @form = form
-    @props = props
-    @element = element
-    @value = props.value
-    if @value == null
-        @value = null
-    @release = []
-
-Control:getValue()
-    switch @props.type
-      case "input"
-          return @element.value
-      case "value"
-          return @value
-      else
-          return null
-
-Control:setValue(value)
-    @value = value
-    if @props.type == "input"
-        if value == null
-            @element.value = ""
-          else
-              @element.value = "${value}"
-    return @this
-
-Control:setDisabled(value)
-    @element.disabled = value
-    return @this
-
-Control:setCaption(value)
-    @element.textContent = value
-    return @this
-
-Control:dispose()
-    for @release as release
-        release()
-    @release = []
-    return null
-
 BootstrapRenderer()
     @factories = Object/create(null)
     @templates = Object/create(null)
     @templates.button = createTemplate(<button type="button" class="btn"></button>)
     @templates.text = createTemplate(<span></span>)
-    @templates.input = createTemplate(<input class="form-control" />)
     @templates.value = createTemplate(<span hidden="hidden"></span>)
     @templates.container = createTemplate(<div></div>)
+    @fields = {
+        input: Input
+        checkbox: Checkbox
+        "switch": Switch
+        range: Range
+        select: Select
+        radio: Radio
+    }
 
 BootstrapRenderer:registerControlType(name, factory)
     if name in @factories
@@ -104,6 +64,14 @@ BootstrapRenderer:build(form, props)
         custom = @factories[props.type](form, props)
         form.register(props.name, custom)
         return custom.element
+    if props.type in @fields
+        ctor = @fields[props.type]
+        field = Reflect/construct(ctor, [form, props])
+        form.register(props.name, field)
+        if props.style != null
+            for props.style as name: value
+                field.element.style.setProperty(name, value)
+        return field.element
     kind = props.type
     if kind == "row" or kind == "col"
         kind = "container"
@@ -112,7 +80,11 @@ BootstrapRenderer:build(form, props)
     element = cloneTemplate(@templates[kind])
     if props.type == "row" or props.type == "col"
         element.classList.add(props.type)
-    control = new Control(form, props, element)
+    control = null
+    if kind == "value"
+        control = new Value(form, props, element)
+      else
+          control = new Control(form, props, element)
     form.register(props.name, control)
     if props.style != null
         for props.style as name: value
@@ -145,24 +117,6 @@ BootstrapRenderer:build(form, props)
               releases.add(release)
       case "text"
           element.textContent = props.text
-      case "input"
-          variant = props.variant
-          if variant == null
-              variant = "text"
-          variants = ["text", "email", "password", "search", "tel", "url"]
-          if !variants.includes(variant.toLowerCase())
-              throw "Unsupported input variant: ${variant}"
-          element.type = variant.toLowerCase()
-          element.disabled = props.disabled == true
-          element.readOnly = props.readonly == true
-          element.required = props.required == true
-          if props.placeholder != null
-              element.placeholder = props.placeholder
-          if props.maxLength != null
-              element.maxLength = props.maxLength
-          if props.label != null
-              element.setAttribute("aria-label", props.label)
-          control.setValue(props.value)
       case "container"
           if props.controls != null
               for props.controls as item
@@ -185,6 +139,7 @@ BootstrapRenderer:show(form, view)
                 content.appendChild(build(form, props))
           else
               content.appendChild(build(form, view))
+        form.element.replaceChildren(content)
     catch error
         for form.owned as control
             control.dispose()
@@ -194,7 +149,7 @@ BootstrapRenderer:show(form, view)
         throw error
     for owned as control
         control.dispose()
-    form.element.replaceChildren(content)
+    form.clearResources()
     return null
 
 BootstrapRenderer:waiting(form, active)

@@ -54,18 +54,59 @@ shell for those deep-link GETs; Lango Server's existing static handler returns
 - Ordinary same-origin links use client navigation. Modified clicks, downloads,
   external links, and links targeting another browsing context keep browser
   behavior. Back and forward request the page again.
-- `values`, `disable`, `enable`, `changeCaption`, `redirect`, and `setUrl`
+- `values`, `invalid`, `set`, `disable`, `enable`, `changeCaption`, `redirect`, and `setUrl`
   commands are implemented. `setUrl` changes history without fetching a view;
   `redirect` requests the target after the current response finishes.
 - A sending form has a waiting indicator, blur, and `aria-busy` state.
 - Forms dispose child controls and registered resources when removed. Failed
   control construction preserves the previous view and its control registry.
 
-The initial Bootstrap renderer supports `form`, `container`, `row`, `col`,
-`text`, `button`, `value`, and text-like `input` variants (`text`, `email`,
-`password`, `search`, `tel`, `url`). Unsupported types, variants, and commands
-fail explicitly. Input labels are currently exposed through `aria-label`;
-visible field labels and descriptions remain part of the renderer work.
+The Bootstrap renderer supports `form`, `container`, `row`, `col`, `text`,
+`button`, `value`, `input`, `checkbox`, `switch`, `select`, `radio`, and `range`.
+Fields use separate Lango classes and have visible associated labels and
+descriptions. Supported value semantics:
+
+| Control | Value |
+| --- | --- |
+| Input, text-like variants | String; empty input returns an empty string |
+| Input `String` | Alias for the text variant; `lines > 1` creates a textarea |
+| Input `Number` | JavaScript number, or null when empty/invalid |
+| Input `Decimal` / `Money` | Exact text, with a decimal input hint; no float conversion |
+| Checkbox | Boolean, or null while indeterminate |
+| Switch | Boolean; an unset/null value becomes false |
+| Range | Native numeric slider value, with min/max/steps |
+| Select / Radio | The option's original JSON value, or null when unselected |
+
+Select and Radio support structured JSON option values, compared by structure
+and primitive type. Radio also supports `selectedIndex` when no `value` is
+supplied, and respects each option's `enabled` flag. Readonly controls that have
+no native readonly mode stay disabled even after an `enable` command.
+
+Input `url` sends its owning form after 500 ms without another input event.
+Programmatic `values` updates emit no events and create no request. Disposing
+the input cancels its pending debounce and removes its listeners.
+
+Date pickers, file/OTP controls, currency/number display formatting and advanced
+decorative options remain open. Unsupported control types and input variants
+fail explicitly. Decimal/Money currently preserve text rather than formatting or
+parsing localized monetary input.
+
+## Validation and form content replacement
+
+`invalid(name, message)` resolves slash-separated names and presents plain-text
+feedback. Fields receive an invalid style, `aria-invalid`, and an additional
+`aria-describedby` reference while retaining their description. Before a queued
+send actually starts, the sending form clears errors on its owned controls,
+child forms and inherited value sources. Unrelated errors remain visible.
+
+`set(name, control)` replaces the **contents of a named Form**, preserving that
+Form's identity and token. A Form definition replaces its content directly; any
+other control becomes its new content. Remaining commands, including the final
+`values` command, address the new controls. Successful replacement disposes old
+controls and form resources. Failed construction preserves the previous DOM,
+registry, inherited names and resources, and disposes the failed candidate.
+App-wide navigation listeners survive form content changes and are released
+only when the application is disposed.
 
 ## Per-token keepalive
 
@@ -85,14 +126,17 @@ cancels the timer.
 
 ## Custom controls
 
-The package exports `App`, `Form`, `BootstrapRenderer`, `Control`,
+The package exports `App`, `Form`, `BootstrapRenderer`, `Control`, `Value`,
+`Field`, `Input`, `Checkbox`, `Switch`, `Range`, `Select`, `Radio`,
 `createTemplate`, and `cloneTemplate`. The browser entry module exports
 `start()` and uses the current origin, Web platform, and Bootstrap renderer.
 
 `renderer.registerControlType(type, factory)` registers a factory called with
 `(form, props)`. It returns a control with `element`, `getValue()`,
 `setValue(value)`, and `dispose()`. Commands affecting that control may also
-require `setDisabled(value)` or `setCaption(value)`. Factories must release
+require `setDisabled(value)` or `setCaption(value)`. Validation-aware controls
+provide `setInvalid(message)` and `clearValidation()`; the exported `Control`
+base supplies both and supports selecting an inner validation target. Factories must release
 their event listeners and other resources in `dispose()`.
 
 Built-in DOM templates are cloned for each control. Captions and text are
@@ -108,10 +152,10 @@ assigned through `textContent`; field values use DOM properties.
 - The lifecycle implementation requires the updated Lango UI batch Ping and
   Lango Server token-refresh support. Publish/deploy the server first, then UI,
   and rebuild the client. Optional absent lifecycle channels remain disabled.
-- The rest of the control catalog, validation presentation, resource commands
+- The rest of the control catalog, advanced field presentation, resource commands
   (timers and long polling), dialogs, toasts, and client error reporting remain
   to be implemented. Unexpected send/navigation errors currently use a simple
   Toast; application errors remain application-owned.
-- Query/hash history policy, the default template, SPA hosting, and packaging a
+- Query/hash history policy, SPA hosting, and packaging a
   generated application need integration work. The package currently builds one
   fixed same-origin Web/Bootstrap application, not a multi-platform generator.

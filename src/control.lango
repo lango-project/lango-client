@@ -1,0 +1,98 @@
+import js global document
+import "./templates"
+    controlId()
+
+export class Control(form, props, element)
+    properties
+        element
+        release
+    methods
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        setCaption(value)
+        validationTarget(element)
+        setInvalid(message)
+        clearValidation()
+        dispose()
+
+Control(form, props, element)
+    @element = element
+    @value = props.value
+    @release = []
+    @feedback = null
+    validationTarget(element)
+
+Control:getValue()
+    return null
+
+Control:setValue(value)
+    @value = value
+    return @this
+
+Control:setDisabled(value)
+    @element.disabled = value
+    return @this
+
+Control:setCaption(value)
+    @element.textContent = value
+    return @this
+
+Control:validationTarget(element)
+    @target = element
+    @describedBy = element.getAttribute("aria-describedby")
+    @invalid = element.getAttribute("aria-invalid")
+    return null
+
+Control:setInvalid(message)
+    clearValidation()
+    @feedback = document/createElement("div")
+    @feedback.id = controlId()
+    @feedback.className = "invalid-feedback d-block"
+    @feedback.textContent = message
+    @target.classList.add("is-invalid")
+    @target.setAttribute("aria-invalid", "true")
+    description = @feedback.id
+    if @describedBy != null and @describedBy != ""
+        description = "${@describedBy} ${description}"
+    @target.setAttribute("aria-describedby", description)
+    @element.appendChild(@feedback)
+    return @this
+
+Control:clearValidation()
+    if @feedback != null
+        @feedback.remove()
+        @feedback = null
+        @target.classList.remove("is-invalid")
+        if @invalid == null
+            @target.removeAttribute("aria-invalid")
+          else
+              @target.setAttribute("aria-invalid", @invalid)
+        if @describedBy == null
+            @target.removeAttribute("aria-describedby")
+          else
+              @target.setAttribute("aria-describedby", @describedBy)
+    return null
+
+Control:dispose()
+    clearValidation()
+    for @release as release
+        release()
+    @release = []
+    return null
+
+export class Value(form, props, element) : Control
+    methods
+        getValue()
+        setValue(value)
+
+Value(form, props, element)
+    super(form, props, element)
+    @value = props.value
+
+Value:getValue()
+    return @value
+
+Value:setValue(value)
+    @value = value
+    return @this
