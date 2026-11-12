@@ -1,5 +1,7 @@
 import js global Object
 import js global Promise
+import "./activities"
+    class Activities
 
 export class Form(app, parent = null, token = null)
     properties
@@ -12,6 +14,7 @@ export class Form(app, parent = null, token = null)
         disposed
         element
         resources
+        activity
     methods
         register(name, control)
         find(name)
@@ -35,6 +38,7 @@ Form(app, parent = null, token = null)
     @disposed = false
     @element = null
     @resources = []
+    @activity = new Activities(@this)
     app.forms.add(@this)
 
 Form:register(name, control)
@@ -86,6 +90,7 @@ Form:clearValidation()
     return null
 
 Form:clearResources()
+    @activity.clear()
     resources = @resources
     @resources = []
     for resources as release

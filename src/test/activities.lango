@@ -1,0 +1,329 @@
+import "./activity_harness"
+    class Harness
+    turn()
+import "../heartbeat"
+    class Heartbeat
+import "../error_reporter"
+    class ErrorReporter
+import js global Object
+import "../longpoll"
+    class LongPoll
+
+test "timers replace by URL and intervals wait for completion and honor cancellation"
+    h = new Harness()
+    h.form.activity.timer("/once", 100)
+    h.form.activity.timer("/once", 200)
+    assert h.pendingTimers() == 1
+    h.runNext()
+    h.field.value = "latest"
+    return chain turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 1
+        assert h.calls[0].input.status == "latest"
+        h.reply(0, {}, 200, "once-token")
+        return turn()
+      then(ignored)
+        capture h
+        assert h.pendingTimers() == 0
+        h.form.activity.timer("/repeat", 50, true)
+        h.runNext()
+        return turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 2
+        assert h.pendingTimers() == 0
+        h.form.activity.clearTimer("/repeat", true)
+        h.reply(1, values("ignored"), 200, "ignored-token")
+        return turn()
+      then(ignored)
+        capture h
+        assert h.pendingTimers() == 0
+        assert h.field.value == "latest"
+        assert h.form.token == "once-token"
+
+test "clearing form resources cancels timer sends already waiting in the queue"
+    h = new Harness()
+    busy = h.form.send("/busy")
+    h.form.activity.timer("/canceled", 10)
+    h.runNext()
+    h.form.clearResources()
+    return chain turn()
+      then(ignored)
+        capture h
+        capture busy
+        assert h.calls.length == 1
+        h.reply(0, {})
+        return busy
+      then(ignored)
+        return turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 1
+        assert h.pendingTimers() == 0
+
+test "longpoll applies messages once and resumes with the applied cursor and token"
+    h = new Harness()
+    h.form.activity.startLongPoll("/updates", "private-key")
+    assert h.calls.length == 1
+    assert h.calls[0].input.cursor == null
+    assert !Object/hasOwn(h.calls[0].input, "status")
+    h.reply(0, {
+        messages: [{
+            id: "c1"
+            data: values("first")
+        }, {
+            id: "c1"
+            data: values("duplicate")
+        }, {
+            id: "c2"
+            data: values("second")
+        }]
+        cursor: "c2"
+        resyncRequired: false
+    }, 200, "poll-token")
+    return chain turn()
+      then(ignored)
+        capture h
+        assert h.field.value == "second"
+        assert h.field.writes == 2
+        assert h.calls.length == 2
+        assert h.calls[1].input.cursor == "c2"
+        assert h.calls[1].options.headers.Authorization == "Bearer poll-token"
+        h.form.dispose()
+        assert h.calls[1].options.signal.aborted
+        h.reply(1, batch("c3", "late"), 200, "late-token")
+        return turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 2
+        assert h.field.value == "second"
+
+test "ordinary sends abort pending polls and stale replies cannot overwrite form state"
+    h = new Harness()
+    h.form.activity.startLongPoll("/updates", "private-key")
+    sent = h.form.send("/save")
+    assert h.calls[0].options.signal.aborted
+    return chain turn()
+      then(ignored)
+        capture h
+        capture sent
+        assert h.calls[1].url == "/save"
+        h.reply(0, batch("old", "stale"), 200, "old-token")
+        h.reply(1, {}, 200, "saved-token")
+        return sent
+      then(ignored)
+        return turn()
+      then(ignored)
+        capture h
+        assert h.field.value == "initial"
+        assert h.calls.length == 3
+        assert h.calls[2].input.cursor == null
+        assert h.calls[2].options.headers.Authorization == "Bearer saved-token"
+        h.form.activity.stopLongPoll("/updates", "private-key")
+        assert h.calls[2].options.signal.aborted
+
+test "Ping does not wait for held polls and queued sends use the renewed token"
+    h = new Harness()
+    h.app.heartbeat = new Heartbeat(h.app, h.host, "/ping")
+    h.app.heartbeat.observe(h.form.token)
+    h.form.activity.startLongPoll("/updates", "private-key")
+    h.clock = 60000
+    ping = h.app.heartbeat.tick()
+    sent = h.form.send("/save")
+    assert h.calls[0].options.signal.aborted
+    return chain turn()
+      then(ignored)
+        capture h
+        capture ping
+        assert h.calls.length == 2
+        assert h.calls[1].url == "/ping"
+        h.reply(0, batch("stale", "stale"))
+        h.reply(1, {
+            tokens: [{
+                previous: "initial-token"
+                token: "renewed-token"
+                status: 200
+            }]
+        })
+        return ping
+      then(ignored)
+        return turn()
+      then(ignored)
+        capture h
+        capture sent
+        assert h.calls[2].url == "/save"
+        assert h.calls[2].options.headers.Authorization == "Bearer renewed-token"
+        h.reply(2, {}, 200, "saved-token")
+        return sent
+      then(ignored)
+        return turn()
+      then(ignored)
+        capture h
+        assert h.calls[3].url == "/updates"
+        assert h.calls[3].options.headers.Authorization == "Bearer saved-token"
+        h.app.dispose()
+
+test "longpoll honors backoff and resync requires a fresh explicit subscription"
+    h = new Harness()
+    h.form.activity.startLongPoll("/updates", "private-key")
+    h.reply(0, {}, 503, null, "2")
+    return chain turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 1
+        assert h.pendingTimers() == 1
+        h.runNext()
+        assert h.clock == 2000
+        h.reply(1, {
+            resyncRequired: true
+            fallback: "/snapshot"
+        }, 409, "resync-token")
+        return turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 3
+        assert h.calls[2].url == "/snapshot"
+        assert h.calls[2].options.headers.Authorization == "Bearer resync-token"
+        h.reply(2, {
+            cmds: [{
+                type: "startLongPoll"
+                url: "/updates"
+                key: "private-key"
+                cursor: "snapshot-cursor"
+            }, {
+                type: "values"
+                values: {
+                    status: "snapshot"
+                }
+            }]
+        }, 200, "snapshot-token")
+        return turn()
+      then(ignored)
+        capture h
+        assert h.calls[3].input.cursor == "snapshot-cursor"
+        assert h.field.value == "snapshot"
+        h.reply(3, {}, 401)
+        return turn()
+      then(ignored)
+        capture h
+        assert h.pendingTimers() == 0
+        assert h.calls.length == 4
+        assert h.errors.length == 1
+
+test "error reports coalesce without raw details and failed reports cannot recurse"
+    h = new Harness()
+    h.app.reporter = new ErrorReporter(h.app, "/errors")
+    h.app.reporter.capture("window", "UnhandledError", null, h.form)
+    h.app.reporter.capture("window", "UnhandledError", null, h.form)
+    h.app.reporter.capture("window", "UnhandledError", null, h.form)
+    assert h.pendingTimers() == 1
+    h.runNext()
+    return chain turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 1
+        report = h.calls[0].input
+        assert report.source == "window"
+        assert report.code == "UnhandledError"
+        assert report.count == 3
+        assert report.token == null
+        assert report.message == null
+        assert report.stack == null
+        assert report.status == null
+        h.reply(0, {}, 500)
+        return turn()
+      then(ignored)
+        capture h
+        assert h.errors.length == 0
+        assert h.pendingTimers() == 0
+        return reportSeries(h, 9)
+      then(ignored)
+        capture h
+        h.app.reporter.capture("ui", "DroppedByBudget", null, h.form)
+        assert h.pendingTimers() == 0
+        assert h.calls.length == 10
+        assert h.form.token == "report-token"
+        h.clock = 60000
+        h.app.reporter.capture("promise", "UnhandledRejection", null, h.form)
+        assert h.pendingTimers() == 1
+        h.app.dispose()
+        assert h.pendingTimers() == 0
+
+test "a failed message keeps only the successfully applied cursor and stops delivery"
+    h = new Harness()
+    poll = new LongPoll(h.form, "/updates", "private-key")
+    poll.resume()
+    h.reply(0, {
+        messages: [{
+            id: "c1"
+            data: values("first")
+        }, {
+            id: "c2"
+            data: {
+                cmds: [{
+                    type: "unsupported"
+                }]
+            }
+        }]
+        cursor: "c2"
+        resyncRequired: false
+    })
+    return chain turn()
+      then(ignored)
+        capture h
+        capture poll
+        assert poll.cursor == "c1"
+        assert !poll.active
+        assert h.field.value == "first"
+        assert h.calls.length == 1
+        assert h.errors.length == 1
+
+test "a cross-origin resync fallback is rejected without sending data or reconnecting"
+    h = new Harness()
+    h.form.activity.startLongPoll("/updates", "private-key")
+    h.reply(0, {
+        resyncRequired: true
+        fallback: "https://other.example/snapshot"
+    }, 409)
+    return chain turn()
+      then(ignored)
+        capture h
+        assert h.calls.length == 1
+        assert h.pendingTimers() == 0
+        assert h.errors.length == 1
+
+reportSeries(h, remaining)
+    if remaining == 0
+        return turn()
+    h.app.reporter.capture("ui", "TestFailure", "status", h.form)
+    h.runNext()
+    return chain turn()
+      then(ignored)
+        capture h
+        h.reply(h.calls.length - 1, {}, 202, "report-token")
+        return turn()
+      then(ignored)
+        capture h
+        capture remaining
+        return reportSeries(h, remaining - 1)
+
+values(value)
+    return {
+        cmds: [{
+            type: "values"
+            values: {
+                status: value
+            }
+        }]
+    }
+
+batch(cursor, value)
+    return {
+        messages: [{
+            id: cursor
+            data: values(value)
+        }]
+        cursor: cursor
+        resyncRequired: false
+    }

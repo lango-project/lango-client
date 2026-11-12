@@ -25,7 +25,7 @@
   },
   "scripts": {
     "build": "lango build src/library.lango --out dist/library.mjs --target browser && lango build src/boot.lango --out dist/boot.mjs --target browser && lango run tools/assets.lango",
-    "test": "npm run build && lango test src/test/core.lango --build-dir .test-output/core && lango test src/test/heartbeat.lango --build-dir .test-output/heartbeat && lango test src/test/field_values.lango --build-dir .test-output/field-values",
+    "test": "npm run build && lango test src/test/core.lango --build-dir .test-output/core && lango test src/test/heartbeat.lango --build-dir .test-output/heartbeat && lango test src/test/field_values.lango --build-dir .test-output/field-values && lango test src/test/activities.lango --build-dir .test-output/activities",
     "test:browser": "npm run build && lango run tools/browser.lango test",
     "browser:install": "lango run tools/browser.lango install",
     "prepack": "npm run build"

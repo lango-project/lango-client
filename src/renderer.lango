@@ -107,7 +107,7 @@ BootstrapRenderer:build(form, props)
                   chain form.send(props.url)
                     catch(error)
                       capture form
-                      reportError(form, error)
+                      form.app.error(form, error)
               element.addEventListener("click", listener)
               release = ()
                   capture element

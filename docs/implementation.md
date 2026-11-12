@@ -7,16 +7,20 @@
 2. **Templates and keepalive — implemented.** Scoped/default template metadata
    comes from Lango UI. Successful server validation renews expiry. Per-token
    freshness, deduplication, batch Ping and the app-wide send gate are in place.
-   Application disposal cancels the keepalive timer. Client error event reporting
-   remains open; business requests are never automatically retried.
+   Application disposal cancels the keepalive timer. Business requests are never
+   automatically retried.
 3. **Form interaction — implemented for common fields.** Validation display/reset,
    Form content replacement, visible labels/descriptions, numeric/text/decimal
    inputs, textarea, checkbox/switch, structured select/radio values and range.
    Input debounce is canceled on disposal. Advanced input presentation and broader
    pending-request/navigation cases remain open.
-4. **Control catalog and resources.** Implement the remaining declared controls,
-   timer/long-poll ownership and cancellation, dialog and Toast behavior.
-5. **Application delivery.** Provide a reproducible application generator,
+4. **Background resources and error reporting — implemented.** Form-owned one-shot
+   timers and non-overlapping intervals, cancellable longpoll with serialized
+   delivery, cursor/deduplication/backoff/resync, and bounded technical error
+   reports. Polls yield to ordinary sends and Ping; report failures cannot recurse.
+5. **Control catalog.** Implement the remaining controls, advanced fields,
+   Alert/Toast/Dialog commands, progress updates, tabs and navigation controls.
+6. **Application delivery.** Provide a reproducible application generator,
    deep-link hosting integration, and installation/package tests against actual
    Lango Server and Lango UI applications.
 

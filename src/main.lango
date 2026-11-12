@@ -40,26 +40,38 @@ start()
         event.preventDefault()
         chain app.navigate(link.href)
           catch(error)
-            capture renderer
             capture app
-            renderer.reportError(app.root, error)
+            app.error(app.root, error)
     pop = ()
         capture app
         chain app.navigate(window.location.href, false)
           catch(error)
-            capture renderer
             capture app
-            renderer.reportError(app.root, error)
+            app.error(app.root, error)
+    windowError = (event)
+        capture app
+        if app.reporter != null
+            app.reporter.capture("window", "UnhandledError", null, app.root)
+    rejection = (event)
+        capture app
+        if app.reporter != null
+            app.reporter.capture("promise", "UnhandledRejection", null, app.root)
     document/addEventListener("click", click)
     window.addEventListener("popstate", pop)
+    window.addEventListener("error", windowError)
+    window.addEventListener("unhandledrejection", rejection)
     return chain app.start()
       then(ignored)
         capture app
         release = ()
             capture click
             capture pop
+            capture windowError
+            capture rejection
             document/removeEventListener("click", click)
             window.removeEventListener("popstate", pop)
+            window.removeEventListener("error", windowError)
+            window.removeEventListener("unhandledrejection", rejection)
         resources = app.resources
         resources.add(release)
         return app
@@ -67,8 +79,12 @@ start()
         capture app
         capture click
         capture pop
+        capture windowError
+        capture rejection
         document/removeEventListener("click", click)
         window.removeEventListener("popstate", pop)
+        window.removeEventListener("error", windowError)
+        window.removeEventListener("unhandledrejection", rejection)
         app.dispose()
         throw error
 

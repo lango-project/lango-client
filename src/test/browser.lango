@@ -7,6 +7,10 @@ import "./forms_browser"
     alias formDefinition = definition()
     alias formReply = reply(url)
     alias exerciseForms = exercise(page, records)
+import "./resource_browser"
+    alias resourceServer = serve(req, res)
+    alias resetResources = reset()
+    alias exerciseResources = exercise(page)
 
 global requests = []
 
@@ -324,6 +328,45 @@ test "fields preserve typed values, validation scopes and form replacement ident
       finally
         capture server
         capture state
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "browser resources cancel held HTTP polls and report only bounded technical details"
+    resetResources()
+    server = http/createServer(resourceServer)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.setDefaultTimeout(10000)
+        page.on("pageerror", errorHandler)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/resources")
+      then(ignored)
+        capture state
+        return exerciseResources(state.page)
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
         server.close()
         if state.browser != null
             return state.browser.close()

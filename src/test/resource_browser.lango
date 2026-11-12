@@ -1,0 +1,321 @@
+import js "node:fs" as fs
+import js "node:path" as path
+import js global Object
+import js global Promise
+import js global setTimeout
+
+export serve(req, res)
+export reset()
+export exercise(page)
+
+global state = {}
+
+reset()
+    global state
+    state = {
+        timer: 0
+        interval: 0
+        polls: []
+        reports: []
+        aborted: 0
+        ordinary: null
+    }
+    return null
+
+serve(req, res)
+    if req.method == "POST"
+        body = {
+            text: ""
+        }
+        req.on("data", (chunk)
+            capture body
+            body.text = "${body.text}${chunk}"
+        )
+        req.on("end", ()
+            capture body
+            capture req
+            capture res
+            respond(req, res, from_json(body.text))
+        )
+        return null
+    url = req.url
+    if url == "/resources"
+        url = "/index.html"
+    file = path/join("dist", url)
+    if !fs/existsSync(file) or !fs/statSync(file).isFile()
+        res.writeHead(404)
+        res.end()
+        return null
+    type = "text/javascript"
+    if url.endsWith(".html")
+        type = "text/html"
+    if url.endsWith(".css")
+        type = "text/css"
+    res.setHeader("Content-Type", type)
+    res.end(fs/readFileSync(file))
+    return null
+
+screen()
+    controls = [{
+        type: "text"
+        name: "status"
+        text: "Ready"
+    }]
+    for ["Timer", "Interval", "Subscribe", "Save", "Unsubscribe", "Fault", "Reset"] as action
+        controls.add({
+            type: "button"
+            caption: action
+            url: "/action/${action}"
+        })
+    return {
+        type: "form"
+        controls: controls
+    }
+
+respond(req, res, input)
+    global state
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "response-token")
+    packet = null
+    switch req.url
+      case "/"
+          res.end(to_json({
+              clientErrorUrl: "/errors"
+          }))
+      case "/resources"
+          res.end(to_json({
+              view: screen()
+          }))
+      case "/action/Timer"
+          res.end(to_json({
+              cmds: [{
+                  type: "setTimer"
+                  url: "/timer"
+                  interval: 30
+              }]
+          }))
+      case "/timer"
+          state.timer = state.timer + 1
+          res.end(to_json(caption("Timer fired")))
+      case "/action/Interval"
+          res.end(to_json({
+              cmds: [{
+                  type: "setInterval"
+                  url: "/interval"
+                  interval: 30
+              }]
+          }))
+      case "/interval"
+          state.interval = state.interval + 1
+          if state.interval == 2
+              packet = caption("Interval stopped")
+              packet.cmds.add({
+                  type: "clearInterval"
+                  url: "/interval"
+              })
+              res.end(to_json(packet))
+            else
+                res.end("{}")
+      case "/action/Subscribe"
+          packet = caption("Subscribed")
+          packet.cmds.add({
+              type: "startLongPoll"
+              url: "/updates"
+              key: "secret-channel-key"
+          })
+          res.end(to_json(packet))
+      case "/updates"
+          state.polls.add({
+              input: input
+              token: req.headers.authorization
+          })
+          if state.polls.length == 1
+              res.setHeader("x-lango-token", "first-poll-token")
+              res.end(to_json(poll("c1", "Poll first")))
+            else
+                if state.polls.length == 3
+                    res.setHeader("x-lango-token", "resumed-poll-token")
+                    res.end(to_json(poll("c2", "Poll resumed")))
+                  else
+                      res.on("close", ()
+                          global state
+                          state.aborted = state.aborted + 1
+                      )
+      case "/action/Save"
+          state.ordinary = req.headers.authorization
+          res.setHeader("x-lango-token", "saved-token")
+          res.end(to_json(caption("Saved")))
+      case "/action/Unsubscribe"
+          packet = caption("Poll stopped")
+          packet.cmds.add({
+              type: "stopLongPoll"
+              url: "/updates"
+              key: "secret-channel-key"
+          })
+          res.end(to_json(packet))
+      case "/action/Fault"
+          res.end(to_json({
+              cmds: [{
+                  type: "private-message-with-form-value"
+              }]
+          }))
+      case "/action/Reset"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Reset complete"
+              }
+          }))
+      case "/errors"
+          state.reports.add(input)
+          res.writeHead(500)
+          res.end("{}")
+      else
+          res.writeHead(404)
+          res.end("{}")
+    return null
+
+caption(text)
+    return {
+        cmds: [{
+            type: "changeCaption"
+            name: "status"
+            caption: text
+        }]
+    }
+
+poll(cursor, text)
+    return {
+        messages: [{
+            id: cursor
+            data: caption(text)
+        }]
+        cursor: cursor
+        resyncRequired: false
+    }
+
+exercise(page)
+    return chain click(page, "Timer")
+      then(ignored)
+        capture page
+        return text(page, "Timer fired")
+      then(ignored)
+        capture page
+        return click(page, "Interval")
+      then(ignored)
+        capture page
+        return text(page, "Interval stopped")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(120)
+      then(ignored)
+        capture page
+        global state
+        assert state.timer == 1
+        assert state.interval == 2
+        return click(page, "Subscribe")
+      then(ignored)
+        capture page
+        return text(page, "Poll first")
+      then(ignored)
+        return waitPolls(2)
+      then(ignored)
+        capture page
+        return click(page, "Save")
+      then(ignored)
+        capture page
+        return text(page, "Poll resumed")
+      then(ignored)
+        return waitPolls(4)
+      then(ignored)
+        capture page
+        global state
+        assert state.ordinary == "Bearer first-poll-token"
+        assert state.polls[2].input.cursor == "c1"
+        assert state.polls[2].token == "Bearer saved-token"
+        return click(page, "Unsubscribe")
+      then(ignored)
+        capture page
+        return text(page, "Poll stopped")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(120)
+      then(ignored)
+        capture page
+        global state
+        assert state.polls.length == 4
+        assert state.aborted >= 2
+        return click(page, "Fault")
+      then(ignored)
+        capture page
+        return text(page, "Unsupported UI command: private-message-with-form-value")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(120)
+      then(ignored)
+        capture page
+        global state
+        assert state.reports.length == 1
+        first = state.reports[0]
+        assert first.source == "ui"
+        assert first.code == "UiFailure"
+        assert Object/keys(first).length == 3
+        return click(page, "Subscribe")
+      then(ignored)
+        capture page
+        return text(page, "Subscribed")
+      then(ignored)
+        return waitPolls(5)
+      then(ignored)
+        capture page
+        return click(page, "Reset")
+      then(ignored)
+        capture page
+        return text(page, "Reset complete")
+      then(ignored)
+        capture page
+        return page.locator("body").dispatchEvent("error")
+      then(ignored)
+        capture page
+        return page.locator("body").dispatchEvent("unhandledrejection")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(120)
+      then(ignored)
+        global state
+        assert state.polls.length == 5
+        assert state.aborted >= 3
+        assert state.reports.length == 3
+        assert state.reports[1].source == "window"
+        assert state.reports[2].source == "promise"
+        for state.reports as report
+            assert Object/keys(report).length == 3
+            assert report.message == null
+            assert report.stack == null
+            assert report.token == null
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+text(page, value)
+    return page.getByText(value, {
+        exact: true
+    }).waitFor()
+
+waitPolls(count, attempts = 100)
+    global state
+    if state.polls.length >= count
+        return Promise/resolve(null)
+    if attempts == 0
+        throw "Expected a held HTTP poll"
+    pending = new Promise((resolve)
+        setTimeout(resolve, 10)
+    )
+    return chain pending
+      then(ignored)
+        capture count
+        capture attempts
+        return waitPolls(count, attempts - 1)

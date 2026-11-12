@@ -99,7 +99,7 @@ Heartbeat:tick()
     return chain pending
       catch(error)
         if !@disposed and @app.root != null
-            @app.renderer.reportError(@app.root, error)
+            @app.error(@app.root, error, "PingFailed")
       finally
         start()
 
@@ -156,7 +156,7 @@ Heartbeat:apply(tokens, results)
                 if item.status == 200
                     form.setToken(item.token)
                   else
-                      @app.renderer.reportError(form, "HTTP ${item.status}")
+                      @app.error(form, "HTTP ${item.status}", "PingRejected")
     return null
 
 Heartbeat:dispose()

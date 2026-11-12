@@ -1,0 +1,187 @@
+import js global Promise
+import js global AbortController
+import js global Math
+import js global RegExp
+import js global parseInt
+
+export class LongPoll(form, url, key, cursor = null)
+    properties
+        active
+        generation
+        recovering
+        url
+        key
+        cursor
+    methods
+        pause()
+        resume()
+        pump()
+        received(packet, generation, token)
+        apply(packet)
+        applySafe(packet)
+        recover(packet, generation, token)
+        retry(after = null)
+        dispose()
+
+LongPoll(form, url, key, cursor = null)
+    @form = form
+    @url = url
+    @key = key
+    @cursor = cursor
+    @active = true
+    @generation = 0
+    @recovering = false
+    @flight = false
+    @paused = false
+    @controller = null
+    @timer = null
+    @notBefore = 0
+    @backoff = 1000
+    @seen = []
+
+LongPoll:pause()
+    if !@paused
+        @paused = true
+        @generation = @generation + 1
+    if @controller != null
+        @controller.abort()
+        @controller = null
+    if @timer != null
+        @form.app.cancelTimer(@timer)
+        @timer = null
+    return null
+
+LongPoll:resume()
+    if !@active or @recovering or @form.disposed
+        return null
+    if !@form.app.canPoll(@form)
+        return null
+    @paused = false
+    if @flight or @timer != null
+        return null
+    remaining = @notBefore - @form.app.now()
+    if remaining > 0
+        action = ()
+            @timer = null
+            resume()
+        @timer = @form.app.schedule(action, remaining)
+        return null
+    return pump()
+
+LongPoll:pump()
+    @flight = true
+    @controller = new AbortController()
+    generation = @generation
+    token = @form.token
+    return chain @form.app.poll(@url, {
+        key: @key
+        cursor: @cursor
+    }, token, @controller.signal)
+      then(packet)
+        capture generation
+        capture token
+        if @active and generation == @generation and token == @form.token
+            return received(packet, generation, token)
+        return null
+      catch(error)
+        capture generation
+        if @active and generation == @generation
+            if is_object(error) and error.code == "InvalidPollResponse"
+                dispose()
+                @form.app.error(@form, "Invalid longpoll response", "LongPollMessageFailed")
+              else
+                  retry()
+      finally
+        @flight = false
+        @controller = null
+        resume()
+
+LongPoll:received(packet, generation, token)
+    if packet.status == 200
+        @backoff = 1000
+        action = ()
+            capture packet
+            capture token
+            if token == @form.token
+                applySafe(packet)
+        return @form.app.deliver(@form, action, @this, generation)
+    if packet.status == 409
+        return recover(packet, generation, token)
+    if packet.status == 429 or packet.status >= 500
+        retry(packet.retryAfter)
+        return null
+    dispose()
+    @form.app.error(@form, "HTTP ${packet.status}", "LongPollRejected")
+    return null
+
+LongPoll:applySafe(packet)
+    try
+        apply(packet)
+    catch error
+        dispose()
+        @form.app.error(@form, error, "LongPollMessageFailed")
+    return null
+
+LongPoll:apply(packet)
+    body = packet.body
+    if !is_object(body) or !is_array(body.messages) or !is_string(body.cursor) or body.cursor == "" or body.resyncRequired != false
+        throw "Invalid longpoll response"
+    for body.messages as message
+        if !is_object(message) or !is_string(message.id) or message.id == "" or !is_object(message.data) or is_array(message.data)
+            throw "Invalid longpoll message"
+    if body.messages.length > 0
+        index = body.messages.length - 1
+        last = body.messages[index]
+        if body.cursor != last.id
+            throw "Invalid longpoll cursor"
+    @form.setToken(packet.token)
+    for body.messages as message
+        if !@active
+            return null
+        if !@seen.includes(message.id) and message.id != @cursor
+            @form.handle({
+                token: null
+                body: message.data
+            })
+            @seen.add(message.id)
+            if @seen.length > 256
+                @seen.shift()
+        @cursor = message.id
+    @cursor = body.cursor
+    return null
+
+LongPoll:recover(packet, generation, token)
+    body = packet.body
+    if !is_object(body) or body.resyncRequired != true or !is_string(body.fallback) or body.fallback == ""
+        dispose()
+        @form.app.error(@form, "Longpoll requires a fresh snapshot", "LongPollResyncRequired")
+        return null
+    try
+        @form.app.checkUrl(body.fallback)
+    catch error
+        dispose()
+        @form.app.error(@form, error, "LongPollResyncFailed")
+        return null
+    @recovering = true
+    @form.setToken(packet.token)
+    return chain @form.app.send(@form, body.fallback, @this)
+      catch(error)
+        if @active and !@form.disposed
+            @form.app.error(@form, error, "LongPollResyncFailed")
+      finally
+        dispose()
+
+LongPoll:retry(after = null)
+    delay = @backoff
+    numeric = new RegExp("^[0-9]+$")
+    if is_string(after) and numeric.test(after) and after.length <= 5
+        delay = Math/max(delay, Math/min(60000, parseInt(after, 10) * 1000))
+    @notBefore = @form.app.now() + delay
+    @backoff = Math/min(30000, @backoff * 2)
+    return null
+
+LongPoll:dispose()
+    @active = false
+    pause()
+    @form.activity.forgetPoll(@this)
+    return null

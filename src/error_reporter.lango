@@ -1,0 +1,95 @@
+import js global Promise
+import js global Math
+import js global RegExp
+
+export class ErrorReporter(app, url)
+    properties
+        active
+    methods
+        capture(source, code, name, form)
+        schedule()
+        flush()
+        dispose()
+
+ErrorReporter(app, url)
+    app.checkUrl(url)
+    @app = app
+    @url = url
+    @active = true
+    @pending = []
+    @timer = null
+    @flight = false
+    @window = app.now()
+    @sent = 0
+
+ErrorReporter:capture(source, code, name, form)
+    if !@active or form == null or form.disposed
+        return null
+    if @app.now() - @window >= 60000
+        @window = @app.now()
+        @sent = 0
+    if @sent >= 10
+        return null
+    sources = ["ui", "window", "promise"]
+    valid = new RegExp("^[A-Za-z][A-Za-z0-9_]{0,63}$")
+    if !sources.includes(source) or !is_string(code) or !valid.test(code)
+        return null
+    if !is_string(name) or name.trim() == "" or name.length > 256
+        name = null
+    for @pending as entry
+        previous = entry.report
+        if entry.form == form and previous.source == source and previous.code == code and previous.name == name
+            previous.count = Math/min(100, previous.count + 1)
+            return null
+    if @pending.length >= 20
+        return null
+    report = {
+        source: source
+        code: code
+        count: 1
+    }
+    if name != null
+        report.name = name
+    @pending.add({
+        form: form
+        report: report
+    })
+    schedule()
+    return null
+
+ErrorReporter:schedule()
+    if @active and !@flight and @timer == null and @pending.length > 0
+        action = ()
+            @timer = null
+            flush()
+        @timer = @app.schedule(action, 0)
+    return null
+
+ErrorReporter:flush()
+    if !@active or @flight
+        return Promise/resolve(null)
+    if @sent >= 10
+        @pending = []
+        return Promise/resolve(null)
+    entry = @pending.shift()
+    if entry == null
+        return Promise/resolve(null)
+    if entry.form.disposed
+        schedule()
+        return Promise/resolve(null)
+    @sent = @sent + 1
+    @flight = true
+    return chain @app.report(entry.form, @url, entry.report, @this)
+      catch(error)
+        return null
+      finally
+        @flight = false
+        schedule()
+
+ErrorReporter:dispose()
+    @active = false
+    @pending = []
+    if @timer != null
+        @app.cancelTimer(@timer)
+        @timer = null
+    return null

@@ -1,10 +1,13 @@
 import js global Object
 import js global Promise
 import js global URL
+import js global Date
 import "./form"
     class Form
 import "./heartbeat"
     class Heartbeat
+import "./error_reporter"
+    class ErrorReporter
 
 export class App(host, renderer)
     properties
@@ -13,11 +16,25 @@ export class App(host, renderer)
         renderer
         heartbeat
         resources
+        reporter
     methods
         start()
         post(url, input, token)
         saveToken(token)
-        send(form, url)
+        send(form, url, owner = null)
+        deliver(form, action, owner, generation)
+        report(form, url, input, owner)
+        executeDelivery(job)
+        checkUrl(url)
+        request(url, input, token, signal = null, channel = false)
+        poll(url, input, token, signal)
+        canPoll(form)
+        pausePolls(form = null)
+        resumePolls()
+        schedule(action, delay)
+        cancelTimer(timer)
+        now()
+        error(form, error, code = "UiFailure", name = null)
         drain()
         execute(job)
         navigate(url, push = true)
@@ -40,6 +57,35 @@ App(host, renderer)
     @heartbeat = null
     @pingJob = null
     @resources = []
+    @reporter = null
+
+App:now()
+    if @host.now != null
+        return @host.now()
+    return Date/now()
+
+App:schedule(action, delay)
+    return @host.schedule(action, delay)
+
+App:cancelTimer(timer)
+    @host.cancelTimer(timer)
+    return null
+
+App:checkUrl(url)
+    if !is_string(url) or url.trim() == ""
+        throw "UI request requires a URL"
+    target = new URL(url, @host.location.href)
+    if target.origin != @host.location.origin
+        throw "UI requests must use the current origin"
+    return target
+
+App:error(form, error, code = "UiFailure", name = null)
+    if @disposed or form == null or form.disposed
+        return null
+    @renderer.reportError(form, error)
+    if @reporter != null
+        @reporter.capture("ui", code, name, form)
+    return null
 
 App:saveToken(token)
     try
@@ -49,31 +95,61 @@ App:saveToken(token)
     return null
 
 App:post(url, input, token)
-    target = new URL(url, @host.location.href)
-    if target.origin != @host.location.origin
-        throw "UI requests must use the current origin"
+    return request(url, input, token)
+
+App:poll(url, input, token, signal)
+    return request(url, input, token, signal, true)
+
+App:request(url, input, token, signal = null, channel = false)
+    target = checkUrl(url)
     headers = {
         "Content-Type": "application/json"
     }
     if token != null
         headers.Authorization = "Bearer ${token}"
-    return chain @host.fetch("${target.pathname}${target.search}", {
+    options = {
         method: "POST"
         headers: headers
         body: to_json(input)
-    })
+    }
+    if signal != null
+        options.signal = signal
+    return chain @host.fetch("${target.pathname}${target.search}", options)
       then(res)
+        capture channel
         if !res.ok
-            throw "HTTP ${res.status}"
+            if !channel
+                throw "HTTP ${res.status}"
+            if res.status != 409
+                return {
+                    status: res.status
+                    retryAfter: res.headers.get("retry-after")
+                }
         return chain res.json()
           then(body)
             capture res
+            capture channel
             if !is_object(body) or is_array(body)
+                if channel
+                    throw {
+                        code: "InvalidPollResponse"
+                    }
                 throw "UI response must be a map"
+            status = res.status
+            if status == null
+                status = 200
             return {
+                status: status
                 token: res.headers.get("x-lango-token")
                 body: body
             }
+          catch(error)
+            capture channel
+            if channel
+                throw {
+                    code: "InvalidPollResponse"
+                }
+            throw error
 
 App:start()
     token = null
@@ -84,6 +160,8 @@ App:start()
     return chain post("/", {}, token)
       then(packet)
         @events = packet.body
+        if @events.clientErrorUrl != null
+            @reporter = new ErrorReporter(@this, @events.clientErrorUrl)
         if @events.pingUrl != null
             @heartbeat = new Heartbeat(@this, @host, @events.pingUrl)
         @root = new Form(@this, null, packet.token)
@@ -95,21 +173,78 @@ App:start()
                 @heartbeat.start()
             return null
 
-App:send(form, url)
+App:send(form, url, owner = null)
     if @disposed or form.disposed
         return Promise/reject("Form is disposed")
     pending = new Promise((resolve, reject)
         capture form
         capture url
+        capture owner
         @queue.add({
+            kind: "send"
             form: form
             url: url
+            owner: owner
             resolve: resolve
             reject: reject
         })
         drain()
     )
     return pending
+
+App:deliver(form, action, owner, generation)
+    if @disposed or form.disposed or !owner.active
+        return Promise/resolve(null)
+    deferred = Promise/withResolvers()
+    @queue.add({
+        kind: "delivery"
+        form: form
+        action: action
+        owner: owner
+        generation: generation
+        resolve: deferred.resolve
+        reject: deferred.reject
+    })
+    drain()
+    return deferred.promise
+
+App:report(form, url, input, owner)
+    if @disposed or form.disposed or !owner.active
+        return Promise/resolve(null)
+    deferred = Promise/withResolvers()
+    @queue.add({
+        kind: "report"
+        form: form
+        url: url
+        input: input
+        owner: owner
+        resolve: deferred.resolve
+        reject: deferred.reject
+    })
+    drain()
+    return deferred.promise
+
+App:canPoll(form)
+    if @disposed or form.disposed or @pingJob != null
+        return false
+    for @active as job
+        if form.related(job.form)
+            return false
+    for @queue as job
+        if form.related(job.form)
+            return false
+    return true
+
+App:pausePolls(form = null)
+    for @forms.slice() as candidate
+        if form == null or form.related(candidate)
+            candidate.activity.pause()
+    return null
+
+App:resumePolls()
+    for @forms.slice() as form
+        form.activity.resume()
+    return null
 
 App:drain()
     if @pingJob != null
@@ -130,8 +265,29 @@ App:drain()
         if !blocked
             @queue.splice(@queue.indexOf(job), 1)
             @active.add(job)
-            execute(job)
+            if job.kind == "delivery"
+                executeDelivery(job)
+              else
+                  pausePolls(job.form)
+                  execute(job)
+    resumePolls()
     return null
+
+App:executeDelivery(job)
+    return chain Promise/resolve(null)
+      then(ignored)
+        capture job
+        if !job.form.disposed and job.owner.active and job.owner.generation == job.generation
+            action = job.action
+            action()
+        job.resolve(null)
+      catch(error)
+        capture job
+        job.reject(error)
+      finally
+        capture job
+        @active.splice(@active.indexOf(job), 1)
+        drain()
 
 App:ping()
     if @disposed or @heartbeat == null
@@ -145,6 +301,7 @@ App:ping()
         reject: deferred.reject
         running: false
     }
+    pausePolls()
     drain()
     return deferred.promise
 
@@ -170,12 +327,21 @@ App:execute(job)
         capture job
         if form.disposed
             throw "Form is disposed"
+        if job.owner != null and !job.owner.active
+            return null
+        if job.kind == "report"
+            return post(job.url, job.input, form.token)
         form.clearValidation()
         @renderer.waiting(form, true)
         return post(job.url, form.getValue(), form.token)
       then(packet)
         capture form
-        form.handle(packet)
+        capture job
+        if packet != null and !form.disposed and (job.owner == null or job.owner.active)
+            if job.kind == "report"
+                form.setToken(packet.token)
+              else
+                  form.handle(packet)
       then(ignored)
         capture job
         job.resolve(null)
@@ -185,7 +351,8 @@ App:execute(job)
       finally
         capture job
         capture form
-        @renderer.waiting(form, false)
+        if job.kind == "send"
+            @renderer.waiting(form, false)
         @active.splice(@active.indexOf(job), 1)
         drain()
 
@@ -263,9 +430,9 @@ App:command(form, cmd)
           action = ()
               capture cmd
               chain navigate(cmd.url)
-                catch(error)
+                catch(problem)
                   capture form
-                  @renderer.reportError(form, error)
+                  error(form, problem)
           @host.defer(action)
       case "disable"
           form.find(cmd.name).setDisabled(true)
@@ -273,6 +440,18 @@ App:command(form, cmd)
           form.find(cmd.name).setDisabled(false)
       case "changeCaption"
           form.find(cmd.name).setCaption(cmd.caption)
+      case "setTimer"
+          form.activity.timer(cmd.url, cmd.interval)
+      case "clearTimer"
+          form.activity.clearTimer(cmd.url)
+      case "setInterval"
+          form.activity.timer(cmd.url, cmd.interval, true)
+      case "clearInterval"
+          form.activity.clearTimer(cmd.url, true)
+      case "startLongPoll"
+          form.activity.startLongPoll(cmd.url, cmd.key, cmd.cursor)
+      case "stopLongPoll"
+          form.activity.stopLongPoll(cmd.url, cmd.key)
       else
           throw "Unsupported UI command: ${cmd.type}"
     return null
@@ -281,6 +460,8 @@ App:dispose()
     @disposed = true
     if @heartbeat != null
         @heartbeat.dispose()
+    if @reporter != null
+        @reporter.dispose()
     for @forms.slice() as form
         form.dispose()
     for @queue as job

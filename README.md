@@ -124,6 +124,67 @@ Failed entries retain their tokens and wait until the next scheduled minute.
 Business requests are never automatically replayed. Application disposal
 cancels the timer.
 
+## Timers and longpoll subscriptions
+
+`setTimer(url, interval)` schedules one form send; `setInterval(url, interval)`
+schedules repeated form sends. Delays are positive milliseconds within the
+native timer range. A new command replaces the timer of the same kind and URL
+in that form. Timer and interval registries are separate. `clearTimer` and
+`clearInterval` are idempotent. Intervals schedule their next tick after the
+previous request settles, avoiding overlapping sends and queued tick backlogs.
+Each tick collects current form values and uses the current token.
+
+Form replacement/disposal cancels timers, queued resource sends and pending
+longpoll HTTP requests. Replies from stopped resources cannot modify the form.
+An ordinary resource request that already reached the server may finish there;
+the client cannot undo application side effects and never automatically retries
+that business operation.
+
+`startLongPoll(url, key, cursor = null)` starts one subscription per URL/key pair
+in the form. Repeating a start without a cursor keeps a live subscription; an
+explicit cursor replaces it. `stopLongPoll(url, key)` is idempotent. Poll requests
+send only `{ key, cursor }`, not form values, with the form's Bearer token.
+
+Held HTTP polls run outside the form send queue. Before a related ordinary send
+or report, the client aborts the pending poll; Ping aborts all held polls. Polls
+resume after those operations with the latest token and successfully applied
+cursor. Responses from an aborted generation are discarded. Successful poll
+responses enter the normal form queue, so message application cannot race form
+sends or Ping. Each message's `data` is a UI response map (`view` and/or `cmds`).
+Messages apply in order. The cursor advances only after successful application;
+the last 256 applied message IDs also suppress recent duplicate deliveries.
+A bad message stops the subscription and reports a technical failure.
+
+Empty successful responses immediately start the next poll. Network/503/429
+failures reconnect with 1–30 second exponential backoff; a numeric Retry-After
+can extend the delay up to 60 seconds. Authentication and other terminal HTTP
+failures stop the subscription. These reconnects repeat transport reads, not
+application form operations.
+
+On HTTP 409, the current poll stops normal reads and calls the same-origin
+`fallback` URL as a normal authenticated form send. The fallback must provide
+the fresh UI state and explicitly emit `startLongPoll` with its snapshot cursor.
+Without that command, the subscription remains stopped. Snapshot/cursor
+consistency belongs to the application. No fallback or an invalid/cross-origin
+fallback stops the subscription and reports `LongPollResyncRequired` or
+`LongPollResyncFailed`; a new cursor is never invented locally.
+
+## Client error reporting
+
+When bootstrap supplies `clientErrorUrl`, unexpected UI errors, window `error`
+events and `unhandledrejection` events produce bounded technical reports:
+`{ source, code, count, name? }`. Source is `ui`, `window` or `promise`. Raw
+messages, stack traces, filenames, form values, channel keys and tokens are not
+included. Validation feedback is not reported as an unexpected error.
+
+Pending identical reports for the same form are coalesced up to count 100. The
+app permits at most 20 queued report entries and 10 attempted reports per minute.
+Reports use the ordinary form serialization/Ping gate but do not collect values,
+clear validation, show a waiting indicator, or apply response views/commands.
+Only their token header is accepted. Failed reports are discarded without a
+Toast, recursive reporting or retry. Optional absent channels do nothing.
+Global listeners survive form content replacement and close with the app.
+
 ## Custom controls
 
 The package exports `App`, `Form`, `BootstrapRenderer`, `Control`, `Value`,
@@ -152,9 +213,8 @@ assigned through `textContent`; field values use DOM properties.
 - The lifecycle implementation requires the updated Lango UI batch Ping and
   Lango Server token-refresh support. Publish/deploy the server first, then UI,
   and rebuild the client. Optional absent lifecycle channels remain disabled.
-- The rest of the control catalog, advanced field presentation, resource commands
-  (timers and long polling), dialogs, toasts, and client error reporting remain
-  to be implemented. Unexpected send/navigation errors currently use a simple
+- The rest of the control catalog, advanced field presentation, dialogs and
+  application Toast/Alert commands remain to be implemented. Unexpected send/navigation errors currently use a simple
   Toast; application errors remain application-owned.
 - Query/hash history policy, SPA hosting, and packaging a
   generated application need integration work. The package currently builds one

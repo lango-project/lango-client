@@ -1,0 +1,132 @@
+import js global Object
+import js global Reflect
+import js global TextEncoder
+import "./longpoll"
+    class LongPoll
+
+export class Activities(form)
+    methods
+        timer(url, delay, repeating = false)
+        clearTimer(url, repeating = false)
+        fire(record, registry)
+        startLongPoll(url, key, cursor = null)
+        stopLongPoll(url, key)
+        forgetPoll(poll)
+        pause()
+        resume()
+        clear()
+
+Activities(form)
+    @form = form
+    @timers = Object/create(null)
+    @intervals = Object/create(null)
+    @polls = []
+
+Activities:timer(url, delay, repeating = false)
+    @form.app.checkUrl(url)
+    if !is_number(delay) or delay <= 0 or delay > 2147483647
+        throw "Timer delay must be between 0 and 2147483647 milliseconds"
+    clearTimer(url, repeating)
+    registry = @timers
+    if repeating
+        registry = @intervals
+    record = {
+        url: url
+        delay: delay
+        repeating: repeating
+        active: true
+        timer: null
+    }
+    registry[url] = record
+    action = ()
+        capture record
+        capture registry
+        fire(record, registry)
+    record.timer = @form.app.schedule(action, delay)
+    return null
+
+Activities:clearTimer(url, repeating = false)
+    registry = @timers
+    if repeating
+        registry = @intervals
+    record = registry[url]
+    if record != null
+        record.active = false
+        if record.timer != null
+            @form.app.cancelTimer(record.timer)
+            record.timer = null
+        Reflect/deleteProperty(registry, url)
+    return null
+
+Activities:fire(record, registry)
+    record.timer = null
+    if !record.active or @form.disposed
+        return null
+    return chain @form.app.send(@form, record.url, record)
+      catch(error)
+        capture record
+        if record.active and !@form.disposed
+            @form.app.error(@form, error, "TimerFailed")
+      finally
+        capture record
+        capture registry
+        if record.active and record.repeating and !@form.disposed
+            action = ()
+                capture record
+                capture registry
+                fire(record, registry)
+            record.timer = @form.app.schedule(action, record.delay)
+          else
+              record.active = false
+              if registry[record.url] == record
+                  Reflect/deleteProperty(registry, record.url)
+
+Activities:startLongPoll(url, key, cursor = null)
+    @form.app.checkUrl(url)
+    if !is_string(key) or key == ""
+        throw "Longpoll requires a key"
+    encoder = new TextEncoder()
+    if encoder.encode(key).length > 1024
+        throw "Longpoll key exceeds 1024 bytes"
+    if cursor != null and (!is_string(cursor) or cursor == "")
+        throw "Longpoll cursor must be a nonempty string or null"
+    for @polls.slice() as current
+        if current.url == url and current.key == key
+            if cursor == null and current.active and !current.recovering
+                return null
+            current.dispose()
+    poll = new LongPoll(@form, url, key, cursor)
+    @polls.add(poll)
+    poll.resume()
+    return null
+
+Activities:stopLongPoll(url, key)
+    for @polls.slice() as poll
+        if poll.url == url and poll.key == key
+            poll.dispose()
+    return null
+
+Activities:forgetPoll(poll)
+    index = @polls.indexOf(poll)
+    if index >= 0
+        @polls.splice(index, 1)
+    return null
+
+Activities:pause()
+    for @polls.slice() as poll
+        poll.pause()
+    return null
+
+Activities:resume()
+    for @polls.slice() as poll
+        poll.resume()
+    return null
+
+Activities:clear()
+    for Object/keys(@timers) as url
+        clearTimer(url)
+    for Object/keys(@intervals) as url
+        clearTimer(url, true)
+    for @polls.slice() as poll
+        poll.dispose()
+    return null

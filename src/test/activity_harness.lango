@@ -1,0 +1,154 @@
+import js global Promise
+import js global setTimeout
+import "../app"
+    class App
+import "../form"
+    class Form
+
+export turn()
+export class Harness()
+    properties
+        app
+        form
+        field
+        host
+        calls
+        timers
+        clock
+        errors
+    methods
+        runNext()
+        pendingTimers()
+        reply(index, body, status = 200, token = null, retryAfter = null)
+        reject(index)
+
+class Value()
+    properties
+        value
+        writes
+    methods
+        getValue()
+        setValue(value)
+        dispose()
+
+Value()
+    @value = "initial"
+    @writes = 0
+
+Value:getValue()
+    return @value
+
+Value:setValue(value)
+    @value = value
+    @writes = @writes + 1
+    return @this
+
+Value:dispose()
+    return null
+
+Harness()
+    @calls = []
+    @timers = []
+    @errors = []
+    @clock = 0
+    schedule = (action, delay)
+        record = {
+            action: action
+            at: @clock + delay
+            active: true
+        }
+        @timers.add(record)
+        return record
+    cancel = (record)
+        record.active = false
+    now = ()
+        return @clock
+    fetch = (url, options)
+        pending = new Promise((resolve, reject)
+            capture url
+            capture options
+            @calls.add({
+                url: url
+                options: options
+                input: from_json(options.body)
+                resolve: resolve
+                reject: reject
+            })
+        )
+        return pending
+    error = (form, problem)
+        @errors.add(problem)
+    @host = {
+        location: {
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        schedule: schedule
+        cancelTimer: cancel
+        now: now
+        fetch: fetch
+    }
+    @app = new App(@host, {
+        waiting: nothing
+        reportError: error
+    })
+    @form = new Form(@app)
+    @app.root = @form
+    @form.setToken("initial-token")
+    @field = new Value()
+    @form.register("status", @field)
+
+Harness:runNext()
+    next = null
+    for @timers as record
+        if record.active and (next == null or record.at < next.at)
+            next = record
+    if next == null
+        throw "No pending timer"
+    @clock = next.at
+    next.active = false
+    action = next.action
+    action()
+    return null
+
+Harness:pendingTimers()
+    count = 0
+    for @timers as record
+        if record.active
+            count = count + 1
+    return count
+
+Harness:reply(index, body, status = 200, token = null, retryAfter = null)
+    header = (name)
+        capture token
+        capture retryAfter
+        if name == "x-lango-token"
+            return token
+        if name == "retry-after"
+            return retryAfter
+        return null
+    json = ()
+        capture body
+        return Promise/resolve(body)
+    @calls[index].resolve({
+        ok: status < 400
+        status: status
+        headers: {
+            get: header
+        }
+        json: json
+    })
+    return null
+
+Harness:reject(index)
+    @calls[index].reject("Network unavailable")
+    return null
+
+turn()
+    pending = new Promise((resolve)
+        setTimeout(resolve, 0)
+    )
+    return pending
+
+nothing(first, second)
+    return null
