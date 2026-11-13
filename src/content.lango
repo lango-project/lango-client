@@ -21,6 +21,8 @@ appendContent(form, element, content, renderer)
             appendContent(form, element, value, renderer)
       else
           if is_object(content) and is_string(content.type)
+              if renderer == null
+                  throw "Control content requires a renderer"
               element.appendChild(renderer.build(form, content))
             else
                 if !is_string(content) and !is_number(content)

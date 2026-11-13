@@ -1,5 +1,7 @@
 import js "node:fs" as fs
 import js "node:path" as path
+import js "node:child_process" as child
+import js global process
 
 export main(args)
 
@@ -18,4 +20,12 @@ main(args)
     fs/copyFileSync("node_modules/dompurify/dist/purify.es.mjs", "dist/vendor/dompurify.mjs")
     fs/copyFileSync("node_modules/dompurify/dist/purify.es.mjs.map", "dist/vendor/purify.es.mjs.map")
     fs/copyFileSync("node_modules/dompurify/LICENSE", "dist/vendor/DOMPurify-LICENSE")
+    command = ["node_modules/esbuild/bin/esbuild", "node_modules/flatpickr/dist/esm/index.js", "--bundle", "--format=esm", "--platform=browser", "--sourcemap", "--outfile=dist/vendor/flatpickr.mjs"]
+    result = child/spawnSync(process.execPath, command, {
+        stdio: "inherit"
+    })
+    if result.status != 0
+        throw "Date picker browser bundle failed"
+    fs/copyFileSync("node_modules/flatpickr/dist/flatpickr.min.css", "dist/vendor/flatpickr.min.css")
+    fs/copyFileSync("node_modules/flatpickr/LICENSE.md", "dist/vendor/flatpickr-LICENSE.md")
     return null

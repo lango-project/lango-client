@@ -1,0 +1,66 @@
+import js global document
+import js global Object
+import js global Reflect
+import "./content"
+    appendContent(form, element, content, renderer)
+
+export class RichContent(form, element, renderer, interactive = true, label = "Button caption")
+    methods
+        replace(content)
+        controls()
+        dispose()
+
+RichContent(form, element, renderer, interactive = true, label = "Button caption")
+    @form = form
+    @element = element
+    @renderer = renderer
+    @interactive = interactive
+    @label = label
+    @owned = []
+
+RichContent:controls()
+    return @owned.slice()
+
+RichContent:replace(content)
+    if content == null or is_string(content) or is_number(content)
+        dispose()
+        @element.textContent = ""
+        if content != null
+            @element.textContent = "${content}"
+        return @this
+    previous = @form.controls
+    owned = @form.owned
+    staged = Object/assign(Object/create(null), previous)
+    for Object/keys(staged) as name
+        if @owned.includes(staged[name])
+            Reflect/deleteProperty(staged, name)
+    fragment = document/createDocumentFragment()
+    @form.controls = staged
+    @form.owned = []
+    try
+        appendContent(@form, fragment, content, @renderer)
+        if !@interactive and fragment.querySelector("button, a, input, select, textarea, summary, [tabindex], [contenteditable], [role=button], [role=link], [role=tab], audio[controls], video[controls]") != null
+            throw "${@label} cannot contain interactive controls"
+    catch error
+        for @form.owned.slice() as child
+            child.dispose()
+        @form.controls = previous
+        @form.owned = owned
+        throw error
+    children = @form.owned
+    @form.owned = owned
+    dispose()
+    @owned = children
+    for children as child
+        current = @form.owned
+        current.add(child)
+    @element.replaceChildren(fragment)
+    return @this
+
+RichContent:dispose()
+    children = @owned
+    @owned = []
+    for children as child
+        @form.unregister(child)
+        child.dispose()
+    return null

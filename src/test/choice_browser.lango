@@ -1,0 +1,525 @@
+import js global Object
+import js global Promise
+import js "node:timers/promises" as timers
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global state = {}
+
+reset()
+    global state
+    state = {
+        requests: []
+        held: null
+        flags: 0
+    }
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/choices"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture body
+        capture req
+        capture res
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global state
+    requests = state.requests
+    requests.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "choices-token")
+    switch req.url
+      case "/"
+          res.end("{}")
+      case "/choices"
+          res.end(to_json({
+              view: screen()
+          }))
+      case "/hold"
+      case "/other/save"
+          state.held = res
+      case "/broken"
+          res.end(to_json({
+              view: {
+                  type: "form"
+                  spinner: "missing"
+                  controls: []
+              }
+          }))
+      case "/set"
+          res.end(to_json({
+              cmds: [status("Values set"), {
+                  type: "values"
+                  values: {
+                      choice: {
+                          code: 2
+                      }
+                      multi: ["b"]
+                      flag: null
+                  }
+              }, {
+                  type: "enable"
+                  name: "fixed"
+              }, {
+                  type: "enable"
+                  name: "locked"
+              }]
+          }))
+      case "/avatar"
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "avatar"
+                  caption: {
+                      type: "image"
+                      content: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                      mimeType: "image/gif"
+                      aria: {
+                          label: "Profile pixel"
+                      }
+                  }
+              }, status("Avatar updated")]
+          }))
+      case "/chip/action"
+          state.flags = state.flags + 1
+          res.end(to_json({
+              cmds: [status("Flag action ${state.flags}")]
+          }))
+      else
+          res.end(to_json({
+              cmds: [status(req.url)]
+          }))
+    return null
+
+status(text)
+    return {
+        type: "changeCaption"
+        name: "status"
+        caption: text
+    }
+
+screen()
+    controls = [combo("choice", "Choice", false), combo("multi", "Many", true), {
+        type: "comboBox"
+        name: "locked"
+        label: "Locked choice"
+        readonly: true
+        value: "fixed"
+        options: [{
+            value: "fixed"
+            control: {
+                type: "text"
+                text: "Fixed choice"
+            }
+        }]
+    }, {
+        type: "chip"
+        name: "flag"
+        label: "Flag"
+        value: {
+            tag: "flag"
+        }
+        button: {
+            type: "button"
+            caption: "Run flag"
+            url: "/chip/action"
+        }
+    }, {
+        type: "chip"
+        name: "fixed"
+        label: "Fixed chip"
+        value: "fixed"
+        active: true
+        readonly: true
+    }, {
+        type: "avatar"
+        name: "avatar"
+        size: 48
+        content: {
+            type: "text"
+            name: "initials"
+            text: "AL"
+        }
+        status: "online"
+    }, {
+        type: "text"
+        name: "status"
+        text: "Ready"
+    }]
+    for ["set", "broken", "avatar", "hold"] as url
+        controls.add({
+            type: "button"
+            caption: url
+            url: "/${url}"
+        })
+    return {
+        type: "form"
+        controls: [{
+            type: "form"
+            name: "editor"
+            spinner: {
+                type: "formSpinner"
+                name: "busy"
+                status: "Loading editor"
+                variant: "rotate"
+            }
+            controls: controls
+        }, {
+            type: "form"
+            name: "other"
+            spinner: "otherSpinner"
+            controls: [{
+                type: "formSpinner"
+                name: "otherSpinner"
+                status: "Loading other"
+            }, {
+                type: "button"
+                caption: "Save other"
+                url: "/other/save"
+            }, {
+                type: "text"
+                name: "status"
+                text: "Other ready"
+            }]
+        }]
+    }
+
+combo(name, label, multi)
+    if multi
+        return {
+            type: "comboBox"
+            name: name
+            label: label
+            multi: true
+            value: ["a"]
+            options: [{
+                value: "a"
+                control: {
+                    type: "text"
+                    text: "A"
+                }
+            }, {
+                value: "b"
+                control: {
+                    type: "badge"
+                    text: "B"
+                }
+            }]
+        }
+    return {
+        type: "comboBox"
+        name: name
+        label: label
+        value: {
+            code: 1
+        }
+        options: [{
+            value: null
+            control: {
+                type: "text"
+                text: "Available choices"
+            }
+        }, {
+            value: {
+                code: 1
+            }
+            control: {
+                type: "card"
+                title: "One"
+            }
+        }, {
+            value: "https://example.test/value"
+            control: {
+                type: "text"
+                text: "URL-looking data"
+            }
+        }, {
+            value: {
+                code: 2
+            }
+            url: "/combo/choose"
+            control: {
+                type: "text"
+                text: "Two"
+            }
+        }]
+    }
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+text(page, value)
+    return page.getByText(value, {
+        exact: true
+    }).waitFor()
+
+exercise(page)
+    return chain page.getByRole("combobox", {
+        name: "Choice"
+        exact: true
+    }).press("ArrowDown")
+      then(ignored)
+        capture page
+        return page.getByRole("option", {
+            name: "One"
+            exact: true
+        }).press("ArrowDown")
+      then(ignored)
+        capture page
+        return page.getByRole("option", {
+            name: "URL-looking data"
+        }).press("Enter")
+      then(ignored)
+        capture page
+        global state
+        assert state.requests.length == 2
+        return page.getByRole("combobox", {
+            name: "Many"
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("option", {
+            name: "B"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("option", {
+            name: "B"
+            exact: true
+        }).press("Escape")
+      then(ignored)
+        capture page
+        return click(page, "Flag")
+      then(ignored)
+        capture page
+        return click(page, "Run flag")
+      then(ignored)
+        capture page
+        return text(page, "Flag action 1")
+      then(ignored)
+        capture page
+        global state
+        request = state.requests[2]
+        assert request.input.choice == "https://example.test/value"
+        assert request.input.multi.length == 2
+        assert request.input.flag.tag == "flag"
+        assert request.input.fixed == "fixed"
+        assert request.input.avatar == null
+        assert !Object/hasOwn(request.input, "otherSpinner")
+        assert request.token == "Bearer choices-token"
+        return page.getByRole("combobox", {
+            name: "Choice"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("option", {
+            name: "Two"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return text(page, "/combo/choose")
+      then(ignored)
+        capture page
+        global state
+        assert state.requests.length == 4
+        assert state.requests[3].input.choice.code == 2
+        return click(page, "set")
+      then(ignored)
+        capture page
+        return text(page, "Values set")
+      then(ignored)
+        capture page
+        global state
+        assert state.requests.length == 5
+        return page.getByRole("button", {
+            name: "Fixed chip"
+        }).isDisabled()
+      then(disabled)
+        capture page
+        assert disabled
+        return page.getByRole("combobox", {
+            name: "Locked choice"
+        }).isDisabled()
+      then(disabled)
+        capture page
+        assert disabled
+        return click(page, "Run flag")
+      then(ignored)
+        capture page
+        return text(page, "Flag action 2")
+      then(ignored)
+        capture page
+        global state
+        assert state.requests[5].input.flag == null
+        assert state.requests[5].input.multi.length == 1
+        assert state.requests[5].input.multi[0] == "b"
+        return click(page, "broken")
+      then(ignored)
+        capture page
+        return text(page, "Unknown control: missing")
+      then(ignored)
+        capture page
+        return click(page, "avatar")
+      then(ignored)
+        capture page
+        return text(page, "Avatar updated")
+      then(ignored)
+        capture page
+        return page.getByRole("img", {
+            name: "Profile pixel"
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.locator(".lango-avatar").boundingBox()
+      then(box)
+        capture page
+        assert box.width == 48
+        assert box.height == 48
+        return page.locator(".lango-avatar-status[data-status=online]").count()
+      then(count)
+        capture page
+        assert count == 1
+        return spinners(page)
+
+waitHeld(attempt = 0)
+    global state
+    if state.held != null
+        return Promise/resolve(null)
+    if attempt >= 100
+        throw "Held request did not reach the server"
+    return chain timers/setTimeout(10)
+      then(ignored)
+        capture attempt
+        return waitHeld(attempt + 1)
+
+releaseHeld(replace)
+    return chain waitHeld()
+      then(ignored)
+        capture replace
+        return sendHeld(replace)
+
+sendHeld(replace)
+    global state
+    res = state.held
+    assert res != null
+    state.held = null
+    body = {
+        cmds: [status("Other saved")]
+    }
+    if replace
+        body = {
+            view: {
+                type: "form"
+                spinner: {
+                    type: "formSpinner"
+                    status: "New loader"
+                }
+                controls: [{
+                    type: "text"
+                    text: "Editor replaced"
+                }]
+            }
+        }
+    res.end(to_json(body))
+    return null
+
+spinners(page)
+    checks = {}
+    return chain page.getByRole("combobox", {
+        name: "Choice"
+        exact: true
+    }).click()
+      then(ignored)
+        capture page
+        return page.getByRole("option", {
+            name: "Two"
+            exact: true
+        }).elementHandle()
+      then(handle)
+        capture checks
+        capture page
+        Object/assign(checks, {
+            handle: handle
+        })
+        return page.getByRole("option", {
+            name: "Two"
+            exact: true
+        }).press("Escape")
+      then(ignored)
+        capture page
+        return click(page, "hold")
+      then(ignored)
+        capture page
+        return text(page, "Loading editor")
+      then(ignored)
+        capture page
+        return page.getByText("Loading other", {
+            exact: true
+        }).isVisible()
+      then(visible)
+        assert !visible
+        return releaseHeld(true)
+      then(ignored)
+        capture page
+        return text(page, "Editor replaced")
+      then(ignored)
+        capture page
+        return page.locator(".lango-waiting").waitFor({
+            state: "hidden"
+        })
+      then(ignored)
+        capture checks
+        global state
+        Object/assign(checks, {
+            count: state.requests.length
+        })
+        return checks.handle.dispatchEvent("click")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        capture page
+        capture checks
+        global state
+        assert state.requests.length == checks.count
+        return click(page, "Save other")
+      then(ignored)
+        capture page
+        return text(page, "Loading other")
+      then(ignored)
+        return releaseHeld(false)
+      then(ignored)
+        capture page
+        return text(page, "Other saved")
+      then(ignored)
+        capture page
+        return page.locator(".lango-waiting").waitFor({
+            state: "hidden"
+        })

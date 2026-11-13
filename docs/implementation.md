@@ -25,9 +25,12 @@
    native tables with row/cell actions and column resizing, persistent tabs,
    URL-aware navigation, breadcrumbs, recursive menus, ListGroup and value-bearing
    Accordion, field-preserving InputGroup and sanitized Markdown with local
-   dependency assets. Remaining controls and advanced field presentation remain
-   open.
-7. **Application delivery.** Provide a reproducible application generator,
+   dependency assets. Rich Button captions and Alert messages include owned
+   content cleanup and rollback. ComboBox, selectable Chip, Avatar and form-owned
+   FormSpinner, Date range picker, single JSON/base64 File, OTP and explicit
+   numeric/currency formatting are implemented. Decorative/input refinements
+   remain open.
+7. **Application delivery — pending.** Provide a reproducible application generator,
    deep-link hosting integration, and installation/package tests against actual
    Lango Server and Lango UI applications.
 

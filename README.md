@@ -25,11 +25,11 @@ tests start a temporary local HTTP server and launch headless Chromium. They do
 not use any other Lango Client checkout.
 
 `npm run build` writes a static application to `dist/`, including the module
-runtime, Bootstrap 5 CSS, Markdown dependencies and their licenses, the HTML shell,
+runtime, Bootstrap 5 CSS, Markdown/date-picker dependencies and their licenses, the HTML shell,
 and the entry module.
 Configure the application's static server to serve this directory at `/`, or
 copy its **entire contents**, including `.lango/` and `vendor/`, into the public
-directory. The static shell includes an import map for `marked` and `dompurify`;
+directory. The static shell includes an import map for `marked`, `dompurify` and `flatpickr`;
 keep it when embedding this build in a custom HTML shell. Bundlers may instead
 resolve these npm dependencies directly. No CDN is used.
 Keep POST `/` available for Lango UI startup and provide a UI endpoint at
@@ -93,10 +93,10 @@ Input `url` sends its owning form after 500 ms without another input event.
 Programmatic `values` updates emit no events and create no request. Disposing
 the input cancels its pending debounce and removes its listeners.
 
-Date pickers, file/OTP controls, currency/number display formatting and advanced
-decorative options remain open. Unsupported control types and input variants
-fail explicitly. Decimal/Money currently preserve text rather than formatting or
-parsing localized monetary input.
+Date ranges, single-file JSON uploads, OTP and explicit numeric format settings
+are implemented as described below. Advanced decorative options remain open.
+Unsupported control types and input variants fail explicitly. Decimal/Money
+without a format map retain their existing plain-text behavior.
 
 ## Validation and form content replacement
 
@@ -117,13 +117,18 @@ only when the application is disposed.
 
 ## Alerts, Toasts, Dialogs and Progress
 
-`showAlert({ name?, message, theme?, place?, closeButton? })` presents plain text.
+`showAlert({ name?, message, theme?, place?, closeButton? })` accepts literal
+text, a control definition or an array of text/control definitions.
 The default is a dismissible alert at the start of the sending form. A placement
 map uses `{ name: "email", position: "before" }`; position may also be `after`
 or `inside`. Paths resolve against the sending form. A named alert replaces the
 existing alert with that name; malformed replacements preserve the old alert.
 `dismissAlert(name)` is idempotent for an absent alert. Closing unregisters the
-control. Alerts positioned in another form's subtree also close when that
+control and all controls owned by its message. Named message controls belong
+to the sending Form, while explicit nested Forms keep their own value/token
+scopes. Replacing an alert may reuse its previous content names; collisions
+with unrelated controls are rejected. A replacement cannot be anchored inside
+the content it will remove. Alerts positioned in another form's subtree also close when that
 subtree is replaced, without leaving a stale name in the originating form.
 
 `showToast(toast, stack = null)` displays a Toast definition. A named ToastStack
@@ -357,10 +362,160 @@ content intact. Markdown is never used to evaluate Lango expressions or create
 named Lango controls. Dependency modules and their licenses are copied to
 `dist/vendor/` by the build and loaded locally through the static import map.
 
+## Rich button captions and alert messages
+
+Button `caption` accepts literal text, a noninteractive control definition or an
+array of text/control definitions. `changeCaption(name, content)` uses the same
+contract and preserves the button's action, disabled state and attributes.
+Badge/Text/Image content can be used; buttons, links, fields and focusable
+controls are rejected inside a button caption. Clicking caption content triggers
+the containing button's action once.
+
+Alert `message` supports interactive controls, including Buttons and explicit
+Forms. Its content belongs to the sending Form; positioning the Alert in another
+Form changes its lifetime rather than its request/value scope. The Alert itself
+still contributes null. `changeCaption` can replace its message without removing
+the close button.
+
+Replacing either slot constructs and checks new content before committing its
+DOM and name registrations. A failed definition or unrelated name collision
+leaves the old slot intact and disposes partially created controls. Successful
+replacement, Alert dismissal and parent disposal release old names, listeners
+and child Forms. Plain strings remain literal text and avoid registry staging.
+`Button` is exported as a built-in control class. The existing two-argument
+`Alert(form, props)` constructor remains supported for literal text; pass the
+renderer as its optional third argument when constructing rich content directly.
+
+## ComboBox, Chip, Avatar and FormSpinner
+
+`comboBox` is a select-only dropdown with `options` containing `value`, `control`
+and optional `url`. Option content supports passive rich controls such as Card,
+Text, Badge and Image; interactive/focusable controls are rejected. Content must
+provide text, an explicit accessible label or image alt text. Selected values
+are summarized as text on the trigger. Null-valued options introduce named
+nonselectable groups. Values retain JSON types and are compared structurally.
+
+Single selection returns its value or null. `multi = true` returns an array;
+null or an empty array clears it. Duplicate requested values select their option
+once. Invalid values leave the current selection intact. Down/Up and Home/End
+move through options, Enter/Space select, and Escape returns to the trigger.
+Outside pointer/focus changes close the popup. Readonly controls remain disabled
+through `enable` commands. Popup document listeners are released on disposal.
+
+Selecting an option sends the owning Form only when `option.url` is explicitly
+present. A string value, including one that looks like a URL, remains ordinary
+data. The new selection is applied before the request. Programmatic `values`
+updates never invoke option actions. Multi-selection leaves the popup open.
+
+`chip` has a fixed JSON `value` and an initial `active` Boolean. Its selection
+button toggles active state and exposes `aria-pressed`. Active chips return their
+configured value; inactive chips return null. Setting that value through `values`
+activates it; null deactivates it. A different value is rejected. The visible
+caption uses `label`, falling back to a string value. `icon` accepts CSS classes
+or a passive control. Optional `button` is a separate Button definition with its
+own action/disabled state, outside the selection button. Readonly/disabled apply
+to selection. Neither a user toggle nor a programmatic value update sends an
+implicit request; the separate Button may send one.
+
+`avatar` displays literal text or passive controls from `content`, with optional
+`online`, `offline`, `busy` or `away` status. Use an Image control for image
+content. The status dot is decorative; application-supplied `aria.label` can
+describe the avatar and status in the selected language. Default size is 2.5rem; `small`, `medium`, `large`, positive pixel numbers
+and CSS sizes are accepted. `changeCaption` replaces content and releases its
+old controls, keeping size and status. The Avatar itself returns null.
+
+Form `spinner` accepts the name of a FormSpinner owned by that Form, or an inline
+FormSpinner definition. Inline definitions can be named for later commands.
+An absent setting keeps the default waiting indicator. FormSpinner `status`
+is application-provided loading text; `variant` is `border` (default) or
+`rotate`. `changeCaption` updates status text. It returns null and is hidden
+until its Form sends an ordinary request. Ping and longpoll reads do not show it.
+
+The spinner mounts as an overlay of its own Form, with the existing blur and
+`aria-busy` behavior. It hides on success and failure; a replacement view can
+supply a new spinner. Malformed spinner configuration preserves the previous
+view and spinner. A Form cannot use another Form's spinner, so sibling Forms
+retain independent waiting indicators. Removed controls and overlays are
+released with the Form.
+
+## Date, File, OTP and numeric formats
+
+Input `variant: "Date"` returns a calendar range map:
+`{ start: "2024-02-29", end: "2024-03-01" }`. Empty endpoints are null. `value:
+null` clears both. A start without an end represents a partial range. Dates are
+validated as real `YYYY-MM-DD` calendar dates without a time-zone conversion;
+end cannot precede start. Invalid programmatic values preserve the previous
+range. `min`/`max` use the same calendar format.
+
+The [Flatpickr](https://flatpickr.js.org/options/) range picker supports
+`multiMonth` (1–12, default 1), `firstWeekDay` (0–6, default Monday), `inline` and
+button-like styling via `button`. `format` may be a Flatpickr display-format
+string or a map with `display`, `locale` and optional `calendar` locale overrides.
+Calendar month/day names come from Intl in the selected locale; application
+strings such as month/year labels can be supplied through `calendar`.
+Display formatting never changes the wire dates. Readonly/disabled blocks both
+the input and calendar. Disposal destroys the picker and its event listeners.
+
+Input `variant: "OTP"` keeps a string value, including leading zeroes.
+`characters` is `numeric` (default), `alpha` or `alphanumeric`, using ASCII digits
+and letters; case is preserved. `length` is 1–64, default 6. User input filters
+unsupported characters before applying the logical length limit, so pasted
+separators do not truncate a valid final digit. Programmatic invalid values are
+rejected before mutation. Partial codes are allowed for application validation.
+Unless autocomplete is disabled, the input uses `one-time-code`.
+
+Input `variant: "File"` selects one local file and returns either null or:
+
+```json
+{ "name": "bytes.bin", "mimeType": "application/octet-stream", "size": 6, "content": "AAECA//+" }
+```
+
+`content` is base64; `size` counts the original bytes. Empty browser MIME types
+use `application/octet-stream`. `maxBytes` defaults to 1 MiB (1048576 bytes) and
+must be a positive safe integer. `accept` supplies the native file-chooser hint;
+applications remain responsible for server-side validation. Oversized files
+prevent sending. A form waits for pending file reads before collecting values,
+including nested/inherited asynchronous fields. Changing/clearing/disposal
+invalidates old reads and cancels their reader. Only null may be assigned through
+`values`, clearing the selection; the browser never accepts a server-supplied
+local file. Optional `url` is debounced after successful reading.
+
+Base64 increases request size. Lango Server's default `bodyLimit` is 1 MiB,
+which cannot hold a full 1 MiB binary file in JSON. Configure at least 2 MiB
+(`bodyLimit: 2097152`) for one such file, and more if other form values require
+it. This client change does not increase the server limit. Large-file streaming
+and a separate upload protocol remain outside this implementation.
+
+For Number/Decimal/Money, supplying `format` enables a formatted text input.
+The map contains optional `locale` plus Intl.NumberFormat options; Money with
+an explicit `currency` defaults to currency style. The client never guesses a
+currency. For example:
+
+```json
+{ "locale": "tr-TR", "currency": "TRY", "maximumFractionDigits": 4 }
+```
+
+While focused, the field shows its ungrouped raw value. Outside focus it shows
+the formatted value. Decimal/Money return dot-separated decimal text (empty is
+an empty string); Number returns a JavaScript number or null. The editing locale's
+decimal separator is accepted and normalized. Grouping/currency symbols are not
+accepted as editable source text. Display rounding never changes the raw value.
+Intl receives decimal strings directly, preserving large exact inputs rather
+than first converting them to a JavaScript Number. Scientific decimal text is
+accepted within Intl's formatting range. Programmatic invalid values preserve
+the old value. No format map retains the original input behavior.
+
+New input variants honor existing `url` debounce and programmatic-no-event
+rules. Plain synchronous forms keep their original send path. Custom controls
+may implement `prepareValue()` returning a Promise when value collection must
+wait for asynchronous preparation.
+
 ## Custom controls
 
-The package exports `App`, `Form`, `BootstrapRenderer`, `Control`, `Value`,
+The package exports `App`, `Form`, `BootstrapRenderer`, `Control`, `Value`, `Button`,
 `Field`, `Input`, `Checkbox`, `Switch`, `Range`, `Select`, `Radio`,
+`ComboBox`, `Chip`, `Avatar`, `FormSpinner`, `DateInput`, `FileInput`,
+`OTPInput`, `NumericInput`,
 `Alert`, `Progress`, `Toast`, `ToastStack`, `Dialog`, `Menu`, `MenuItem`,
 `ListGroup`, `Accordion`, `AccordionItem`, `InputGroup`, `Markdown`,
 the card/table/tab/navigation
@@ -377,8 +532,9 @@ records the owning `form` so positioned presentations follow its lifetime.
 Factories must release
 their event listeners and other resources in `dispose()`.
 
-Built-in DOM templates are cloned for each control. Captions and text are
-assigned through `textContent`; field values use DOM properties.
+Built-in DOM templates are cloned for each control. Literal text uses
+`textContent` or text nodes, rich slots build control definitions, and field
+values use DOM properties. Markdown uses its separate sanitization path.
 
 ## Integration still required
 

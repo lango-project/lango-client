@@ -1,0 +1,392 @@
+import js "node:buffer" as bytes
+import js global Object
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global state = {}
+
+reset()
+    global state
+    state = {
+        requests: []
+        saves: 0
+    }
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/advanced"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture req
+        capture res
+        capture body
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global state
+    records = state.requests
+    records.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "advanced-token")
+    switch req.url
+      case "/"
+          res.end("{}")
+      case "/advanced"
+          res.end(to_json({
+              view: screen()
+          }))
+      case "/save"
+          state.saves = state.saves + 1
+          res.end(to_json({
+              cmds: [status("Saved ${state.saves}")]
+          }))
+      case "/otp/change"
+          res.end(to_json({
+              cmds: [status("OTP changed")]
+          }))
+      case "/set"
+          res.end(to_json({
+              cmds: [status("Updated"), {
+                  type: "values"
+                  values: {
+                      travel: {
+                          start: "2024-02-29"
+                          end: "2024-03-01"
+                      }
+                      code: "000123"
+                      money: "99999999999999999999.9999"
+                  }
+              }]
+          }))
+      case "/invalid"
+          res.end(to_json({
+              cmds: [{
+                  type: "values"
+                  values: {
+                      travel: {
+                          start: "2023-02-29"
+                      }
+                  }
+              }]
+          }))
+      case "/file/value"
+          res.end(to_json({
+              cmds: [{
+                  type: "values"
+                  values: {
+                      upload: {
+                          name: "fake.bin"
+                      }
+                  }
+              }]
+          }))
+      case "/file/clear"
+          res.end(to_json({
+              cmds: [status("File cleared"), {
+                  type: "values"
+                  values: {
+                      upload: null
+                  }
+              }]
+          }))
+      case "/reset"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Advanced removed"
+              }
+          }))
+    return null
+
+status(text)
+    return {
+        type: "changeCaption"
+        name: "status"
+        caption: text
+    }
+
+screen()
+    controls = [{
+        type: "input"
+        name: "travel"
+        variant: "Date"
+        label: "Travel"
+        inline: true
+        multiMonth: 2
+        firstWeekDay: 1
+        min: "2024-02-01"
+        max: "2024-03-31"
+        format: {
+            display: "d.m.Y"
+            locale: "tr-TR"
+            calendar: {
+                monthAriaLabel: "Ay"
+                yearAriaLabel: "Yıl"
+            }
+        }
+        value: {
+            start: "2024-02-10"
+            end: "2024-02-12"
+        }
+    }, {
+        type: "input"
+        name: "code"
+        variant: "OTP"
+        label: "Code"
+        length: 6
+        characters: "numeric"
+        value: "000000"
+        url: "/otp/change"
+    }, {
+        type: "input"
+        name: "money"
+        variant: "Money"
+        label: "Money"
+        value: "12345678901234567890.1234"
+        format: {
+            locale: "tr-TR"
+            currency: "TRY"
+            minimumFractionDigits: 4
+            maximumFractionDigits: 4
+        }
+    }, {
+        type: "input"
+        name: "number"
+        variant: "Number"
+        label: "Number"
+        value: 12.345
+        format: {
+            locale: "en-US"
+            maximumFractionDigits: 2
+        }
+    }, {
+        type: "input"
+        name: "upload"
+        variant: "File"
+        label: "Upload"
+        accept: ".bin"
+    }, {
+        type: "input"
+        name: "locked"
+        variant: "File"
+        label: "Locked file"
+        readonly: true
+    }, {
+        type: "text"
+        name: "status"
+        text: "Ready"
+    }]
+    for ["save", "set", "invalid", "file/value", "file/clear", "reset"] as action
+        controls.add({
+            type: "button"
+            caption: action
+            url: "/${action}"
+        })
+    return {
+        type: "form"
+        controls: controls
+    }
+
+click(page, text)
+    return page.getByRole("button", {
+        name: text
+        exact: true
+    }).click()
+
+text(page, value)
+    return page.getByText(value, {
+        exact: true
+    }).waitFor()
+
+exercise(page)
+    return chain page.getByLabel("Code", {
+        exact: true
+    }).fill("00a1234")
+      then(ignored)
+        capture page
+        return text(page, "OTP changed")
+      then(ignored)
+        capture page
+        global state
+        index = state.requests.length - 1
+        request = state.requests[index]
+        assert request.url == "/otp/change"
+        assert request.input.code == "001234"
+        assert request.input.money == "12345678901234567890.1234"
+        assert request.input.number == 12.345
+        assert request.input.travel.start == "2024-02-10"
+        return page.locator(".flatpickr-month").count()
+      then(count)
+        capture page
+        assert count == 2
+        return page.locator(".flatpickr-day[aria-label='Şubat 20, 2024']:not(.prevMonthDay):not(.nextMonthDay)").click()
+      then(ignored)
+        capture page
+        return page.locator(".flatpickr-day[aria-label='Şubat 22, 2024']:not(.prevMonthDay):not(.nextMonthDay)").click()
+      then(ignored)
+        capture page
+        return page.getByLabel("Money", {
+            exact: true
+        }).focus()
+      then(ignored)
+        capture page
+        return page.getByLabel("Money", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value == "12345678901234567890.1234"
+        return page.getByLabel("Money", {
+            exact: true
+        }).fill("98765432109876543210,4321")
+      then(ignored)
+        capture page
+        return click(page, "save")
+      then(ignored)
+        capture page
+        return text(page, "Saved 1")
+      then(ignored)
+        capture page
+        global state
+        index = state.requests.length - 1
+        request = state.requests[index]
+        assert request.input.travel.start == "2024-02-20"
+        assert request.input.travel.end == "2024-02-22"
+        assert request.input.money == "98765432109876543210.4321"
+        assert request.token == "Bearer advanced-token"
+        return page.getByLabel("Money", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value.includes("98.765.432.109.876.543.210,4321")
+        return click(page, "set")
+      then(ignored)
+        capture page
+        return text(page, "Updated")
+      then(ignored)
+        capture page
+        return page.getByLabel("Code", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value == "000123"
+        return click(page, "invalid")
+      then(ignored)
+        capture page
+        return text(page, "Invalid calendar date")
+      then(ignored)
+        capture page
+        return files(page)
+
+filePayload(large = false)
+    data = bytes/Buffer/from([0, 1, 2, 3, 255, 254])
+    if large
+        data = bytes/Buffer/alloc(1048577)
+    return {
+        name: "bytes.bin"
+        mimeType: "application/octet-stream"
+        buffer: data
+    }
+
+files(page)
+    checks = {}
+    return chain page.getByLabel("Upload", {
+        exact: true
+    }).setInputFiles(filePayload())
+      then(ignored)
+        capture page
+        return click(page, "save")
+      then(ignored)
+        capture page
+        return text(page, "Saved 2")
+      then(ignored)
+        capture page
+        global state
+        index = state.requests.length - 1
+        request = state.requests[index]
+        assert request.input.upload.name == "bytes.bin"
+        assert request.input.upload.mimeType == "application/octet-stream"
+        assert request.input.upload.size == 6
+        assert request.input.upload.content == "AAECA//+"
+        assert request.input.travel.start == "2024-02-29"
+        assert request.input.travel.end == "2024-03-01"
+        return click(page, "file/value")
+      then(ignored)
+        capture page
+        return text(page, "File values can only be cleared programmatically")
+      then(ignored)
+        capture page
+        return click(page, "file/clear")
+      then(ignored)
+        capture page
+        return text(page, "File cleared")
+      then(ignored)
+        capture page
+        return page.getByLabel("Upload", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value == ""
+        return page.getByLabel("Upload", {
+            exact: true
+        }).setInputFiles(filePayload(true))
+      then(ignored)
+        capture page
+        return text(page, "File exceeds its 1048576-byte limit")
+      then(ignored)
+        capture page
+        capture checks
+        global state
+        Object/assign(checks, {
+            count: state.requests.length
+        })
+        return click(page, "save")
+      then(ignored)
+        capture page
+        return page.locator(".lango-waiting").waitFor({
+            state: "hidden"
+        })
+      then(ignored)
+        capture page
+        capture checks
+        global state
+        assert state.requests.length == checks.count
+        return page.getByLabel("Upload", {
+            exact: true
+        }).setInputFiles([])
+      then(ignored)
+        capture page
+        return cleanup(page)
+
+cleanup(page)
+    return chain click(page, "reset")
+      then(ignored)
+        capture page
+        return text(page, "Advanced removed")
+      then(ignored)
+        capture page
+        return page.locator(".flatpickr-calendar").count()
+      then(count)
+        assert count == 0

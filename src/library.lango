@@ -1,3 +1,20 @@
+import "./date_input"
+    alias DateInputClass = class DateInput
+import "./numeric_input"
+    alias NumericInputClass = class NumericInput
+import "./file_input"
+    alias FileInputClass = class FileInput
+import "./otp_input"
+    alias OTPInputClass = class OTPInput
+import "./chip"
+    alias ChipClass = class Chip
+import "./combo_box"
+    alias ComboBoxClass = class ComboBox
+import "./indicators"
+    alias AvatarClass = class Avatar
+    alias FormSpinnerClass = class FormSpinner
+import "./button"
+    alias ButtonClass = class Button
 import "./input_group"
     alias InputGroupClass = class InputGroup
 import "./markdown"
@@ -62,6 +79,15 @@ import "./presentations"
     alias ToastStackClass = class ToastStack
     alias DialogClass = class Dialog
 
+export global OTPInput
+export global FileInput
+export global NumericInput
+export global DateInput
+export global Chip
+export global ComboBox
+export global Avatar
+export global FormSpinner
+export global Button
 export global InputGroup
 export global Markdown
 export global Accordion
@@ -108,6 +134,15 @@ export global Dialog
 export createTemplate(xml)
 export cloneTemplate(template)
 
+global OTPInput = OTPInputClass
+global FileInput = FileInputClass
+global NumericInput = NumericInputClass
+global DateInput = DateInputClass
+global Chip = ChipClass
+global ComboBox = ComboBoxClass
+global Avatar = AvatarClass
+global FormSpinner = FormSpinnerClass
+global Button = ButtonClass
 global InputGroup = InputGroupClass
 global Markdown = MarkdownClass
 global Accordion = AccordionClass

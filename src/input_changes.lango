@@ -1,0 +1,33 @@
+export class InputChanges(form, url)
+    methods
+        changed()
+        dispose()
+
+InputChanges(form, url)
+    @form = form
+    @url = url
+    @timer = null
+    @active = true
+    if url != null
+        form.app.checkUrl(url)
+
+InputChanges:changed()
+    if @url == null or !@active
+        return null
+    if @timer != null
+        @form.app.cancelTimer(@timer)
+    action = ()
+        @timer = null
+        if @active and !@form.disposed
+            chain @form.send(@url)
+              catch(error)
+                @form.app.error(@form, error)
+    @timer = @form.app.schedule(action, 500)
+    return null
+
+InputChanges:dispose()
+    @active = false
+    if @timer != null
+        @form.app.cancelTimer(@timer)
+        @timer = null
+    return null

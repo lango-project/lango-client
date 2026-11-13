@@ -1,0 +1,83 @@
+import js global Number
+import js global RegExp
+import "./fields"
+    class Field
+import "./templates"
+    cloneMarkup(name, xml)
+import "./input_changes"
+    class InputChanges
+
+export otpSettings(length = null, characters = null)
+export otpText(value, settings, strict = false)
+
+otpSettings(length = null, characters = null)
+    if length == null
+        length = 6
+    if !is_number(length) or !Number/isInteger(length) or length < 1 or length > 64
+        throw "OTP length must be an integer between 1 and 64"
+    if characters == null
+        characters = "numeric"
+    pattern = null
+    switch characters
+      case "numeric"
+          pattern = "[^0-9]"
+      case "alpha"
+          pattern = "[^A-Za-z]"
+      case "alphanumeric"
+          pattern = "[^A-Za-z0-9]"
+      else
+          throw "Unknown OTP characters: ${characters}"
+    return {
+        length: length
+        characters: characters
+        pattern: pattern
+    }
+
+otpText(value, settings, strict = false)
+    if value == null
+        value = ""
+    if !is_string(value)
+        throw "OTP value must be text"
+    filtered = value.replace(new RegExp(settings.pattern, "g"), "").slice(0, settings.length)
+    if strict and filtered != value
+        throw "OTP value contains unsupported characters or exceeds its length"
+    return filtered
+
+export class OTPInput(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+        dispose()
+
+OTPInput(form, props)
+    super(form, props, cloneMarkup("otp-input", <input type="text" class="form-control lango-otp" />))
+    @settings = otpSettings(props.length, props.characters)
+    @changes = new InputChanges(form, props.url)
+    @input.spellcheck = false
+    @input.autocapitalize = "off"
+    if props.disableAutoComplete != true
+        @input.autocomplete = "one-time-code"
+    if @settings.characters == "numeric"
+        @input.inputMode = "numeric"
+    setValue(props.value)
+    listener = ()
+        @input.value = otpText(@input.value, @settings)
+        @changes.changed()
+    @input.addEventListener("input", listener)
+    release = ()
+        capture listener
+        @input.removeEventListener("input", listener)
+    @release.add(release)
+
+OTPInput:getValue()
+    return @input.value
+
+OTPInput:setValue(value)
+    next = otpText(value, @settings, true)
+    @input.value = next
+    return @this
+
+OTPInput:dispose()
+    @changes.dispose()
+    super.dispose()
+    return null

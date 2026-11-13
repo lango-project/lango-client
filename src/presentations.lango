@@ -318,10 +318,22 @@ Presentations:showAlert(form, command)
             throw "Alert name belongs to another control"
     if old != null and anchor == old.element and position == "inside"
         throw "Alert cannot be placed inside itself"
-    alert = new Alert(form, command)
+    if old != null and anchor != null and anchor != old.element and old.element.contains(anchor)
+        throw "Replacement Alert target is inside its previous content"
+    previous = form.controls
+    owned = form.owned
+    staged = Object/assign(Object/create(null), previous)
     if old != null
-        Reflect/deleteProperty(controls, name)
+        removed = old.contentControls()
+        removed.add(old)
+        for Object/keys(staged) as key
+            if removed.includes(staged[key])
+                Reflect/deleteProperty(staged, key)
+    form.controls = staged
+    form.owned = []
+    alert = null
     try
+        alert = new Alert(form, command, @renderer)
         form.register(command.name, alert)
         alert.attach(lifetime)
         if position == "before"
@@ -332,12 +344,17 @@ Presentations:showAlert(form, command)
                 else
                     parent.prepend(alert.element)
     catch error
-        alert.dispose()
-        if old != null
-            controls[name] = old
+        for form.owned.slice() as child
+            child.dispose()
+        form.controls = previous
+        form.owned = owned
         throw error
+    children = form.owned
+    form.owned = owned
     if old != null
         old.close()
+    for children as child
+        form.owned.add(child)
     return null
 
 Presentations:dismissAlert(form, name)

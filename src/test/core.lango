@@ -276,3 +276,54 @@ nothing()
 
 discard(first, second)
     return null
+
+test "form sends wait for asynchronous values before collecting their payload"
+    ready = Promise/withResolvers()
+    started = Promise/withResolvers()
+    state = {
+        value: "before"
+        calls: 0
+    }
+    prepare = ()
+        capture ready
+        return ready.promise
+    get = ()
+        capture state
+        return state.value
+    fetch = (url, options)
+        capture state
+        capture started
+        state.calls = state.calls + 1
+        started.resolve(options)
+        return Promise/resolve(reply("prepared-token"))
+    app = new App({
+        location: {
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        fetch: fetch
+    }, {
+        waiting: discard
+    })
+    form = new Form(app)
+    form.register("upload", {
+        prepareValue: prepare
+        getValue: get
+        dispose: nothing
+    })
+    sent = form.send("/prepared")
+    return chain Promise/resolve(null)
+      then(ignored)
+        capture state
+        capture ready
+        capture started
+        assert state.calls == 0
+        state.value = "after"
+        ready.resolve(null)
+        return started.promise
+      then(options)
+        capture state
+        capture sent
+        assert from_json(options.body).upload == "after"
+        assert state.calls == 1
+        return sent

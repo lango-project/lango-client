@@ -1,0 +1,94 @@
+import js global CSS
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+import "./content"
+    decorate(control, props)
+import "./rich_content"
+    class RichContent
+
+export class Avatar(form, props, renderer) : Control
+    methods
+        setCaption(value)
+        dispose()
+
+Avatar(form, props, renderer)
+    super(form, props, cloneMarkup("avatar", <span class="lango-avatar"><span class="lango-avatar-content"></span><span class="lango-avatar-status" hidden="hidden"></span></span>))
+    @content = new RichContent(form, @element.firstElementChild, renderer, false, "Avatar content")
+    size = props.size
+    switch size
+      case null
+          size = "2.5rem"
+      case "small"
+          size = "2rem"
+      case "medium"
+          size = "3rem"
+      case "large"
+          size = "4rem"
+      else
+          if is_number(size) and size > 0
+              size = "${size}px"
+            else
+                if !is_string(size) or !CSS/supports("width", size) or !CSS/supports("height", size)
+                    throw "Avatar size must be a positive pixel number or CSS size"
+    @element.style.setProperty("--lango-avatar-size", size)
+    status = props.status
+    if status != null
+        statuses = ["online", "offline", "busy", "away"]
+        if !statuses.includes(status)
+            throw "Unknown Avatar status: ${status}"
+        marker = @element.lastElementChild
+        marker.hidden = false
+        marker.setAttribute("data-status", status)
+        marker.setAttribute("aria-hidden", "true")
+    if props.aria != null and props.aria.label != null
+        @element.setAttribute("role", "img")
+    setCaption(props.content)
+
+Avatar:setCaption(value)
+    @content.replace(value)
+    return @this
+
+Avatar:dispose()
+    @content.dispose()
+    super.dispose()
+    return null
+
+export class FormSpinner(form, props) : Control
+    methods
+        show(active)
+        setCaption(value)
+        dispose()
+
+FormSpinner(form, props)
+    super(form, props, cloneMarkup("form-spinner", <div class="lango-form-spinner" role="status" aria-live="polite" hidden="hidden"><span aria-hidden="true"></span><span></span></div>))
+    variant = props.variant
+    if variant == null
+        variant = "border"
+    switch variant
+      case "border"
+          @element.firstElementChild.className = "spinner-border"
+      case "rotate"
+          @element.firstElementChild.className = "lango-spinner-rotate"
+      else
+          throw "Unknown FormSpinner variant: ${variant}"
+    if props.theme != null
+        @element.classList.add("text-${props.theme.toLowerCase()}")
+    setCaption(props.status)
+    decorate(@this, props)
+
+FormSpinner:show(active)
+    if active
+        @form.element.appendChild(@element)
+    @element.hidden = !active
+    return @this
+
+FormSpinner:setCaption(value)
+    @element.lastElementChild.textContent = value
+    return @this
+
+FormSpinner:dispose()
+    @element.remove()
+    super.dispose()
+    return null

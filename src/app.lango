@@ -337,7 +337,18 @@ App:execute(job)
             return post(job.url, job.input, form.token)
         form.clearValidation()
         @renderer.waiting(form, true)
-        return post(job.url, form.getValue(), form.token)
+        ready = form.prepareValue()
+        if ready == null
+            return post(job.url, form.getValue(), form.token)
+        return chain ready
+          then(ignored)
+            capture form
+            capture job
+            if form.disposed
+                throw "Form is disposed"
+            if job.owner != null and !job.owner.active
+                return null
+            return post(job.url, form.getValue(), form.token)
       then(packet)
         capture form
         capture job

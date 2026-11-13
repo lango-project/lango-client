@@ -1,0 +1,403 @@
+import js global Object
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global requests = []
+
+reset()
+    global requests
+    requests = []
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/rich"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture req
+        capture res
+        capture body
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global requests
+    requests.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "rich-token")
+    if req.url == "/"
+        res.end("{}")
+        return null
+    if req.url == "/rich"
+        res.end(to_json({
+            view: screen()
+        }))
+        return null
+    res.end(to_json(response(req.url)))
+    return null
+
+screen()
+    controls = [{
+        type: "input"
+        name: "outside"
+        label: "Outside"
+        value: "Keep outside"
+    }, {
+        type: "button"
+        name: "action"
+        aria: {
+            label: "Composite action"
+        }
+        caption: [{
+            type: "badge"
+            name: "captionBadge"
+            text: "Count"
+        }, {
+            type: "text"
+            name: "captionText"
+            text: "Send"
+        }]
+        url: "/action"
+    }, {
+        type: "text"
+        name: "status"
+        text: "Ready"
+    }, {
+        type: "form"
+        name: "section"
+        controls: [{
+            type: "text"
+            name: "target"
+            text: "Placement target"
+        }]
+    }]
+    for ["caption/replace", "caption/invalid", "caption/collision", "alert/show", "alert/replace", "alert/invalid", "alert/anchor", "alert/cross", "section/reset", "verify", "remove"] as action
+        controls.add({
+            type: "button"
+            caption: action
+            url: "/${action}"
+        })
+    return {
+        type: "form"
+        controls: controls
+    }
+
+response(url)
+    switch url
+      case "/caption/replace"
+          return commands([{
+              type: "changeCaption"
+              name: "action"
+              caption: {
+                  type: "text"
+                  name: "captionText"
+                  text: "Changed caption"
+              }
+          }, status("Caption replaced")])
+      case "/caption/invalid"
+          return commands([{
+              type: "changeCaption"
+              name: "action"
+              caption: [{
+                  type: "input"
+                  name: "forbidden"
+                  label: "Forbidden input"
+              }, {
+                  type: "button"
+                  name: "forbiddenButton"
+                  caption: "Forbidden action"
+              }]
+          }])
+      case "/caption/collision"
+          return commands([{
+              type: "changeCaption"
+              name: "action"
+              caption: {
+                  type: "text"
+                  name: "outside"
+                  text: "Conflicting caption"
+              }
+          }])
+      case "/alert/show"
+          return commands([alert("Initial note"), {
+              type: "values"
+              values: {
+                  note: "Server note"
+              }
+          }])
+      case "/alert/replace"
+          return commands([alert("Replacement note"), status("Alert replaced")])
+      case "/alert/invalid"
+          broken = alert("Broken note")
+          broken.message.controls.add({
+              type: "unsupported"
+          })
+          return commands([broken])
+      case "/alert/anchor"
+          misplaced = alert("Misplaced note")
+          misplaced.place = {
+              name: "note"
+              position: "after"
+          }
+          return commands([misplaced])
+      case "/alert/cross"
+          return commands([{
+              type: "showAlert"
+              name: "notice"
+              message: {
+                  type: "form"
+                  name: "noticeEditor"
+                  controls: [{
+                      type: "input"
+                      name: "detail"
+                      label: "Alert detail"
+                      value: "Detail"
+                  }]
+              }
+              place: {
+                  name: "section/target"
+                  position: "inside"
+              }
+          }])
+      case "/section/reset"
+          return commands([{
+              type: "set"
+              name: "section"
+              control: {
+                  type: "text"
+                  name: "target"
+                  text: "New target"
+              }
+          }])
+      case "/remove"
+          return {
+              view: {
+                  type: "text"
+                  text: "Rich content removed"
+              }
+          }
+    return commands([status(url)])
+
+alert(value)
+    return {
+        type: "showAlert"
+        name: "notice"
+        message: {
+            type: "container"
+            name: "message"
+            controls: [{
+                type: "input"
+                name: "note"
+                label: "Alert note"
+                value: value
+            }, {
+                type: "button"
+                name: "alertAction"
+                caption: {
+                    type: "text"
+                    text: "Save alert"
+                }
+                url: "/alert/save"
+            }]
+        }
+    }
+
+commands(items)
+    return {
+        cmds: items
+    }
+
+status(text)
+    return {
+        type: "changeCaption"
+        name: "status"
+        caption: text
+    }
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+text(page, value)
+    return page.getByText(value, {
+        exact: true
+    }).waitFor()
+
+exercise(page)
+    return chain page.getByText("Count", {
+        exact: true
+    }).click()
+      then(ignored)
+        capture page
+        return text(page, "/action")
+      then(ignored)
+        capture page
+        global requests
+        assert requests.length == 3
+        assert requests[2].input.action == null
+        assert requests[2].input.captionBadge == null
+        return click(page, "caption/replace")
+      then(ignored)
+        capture page
+        return text(page, "Caption replaced")
+      then(ignored)
+        capture page
+        return click(page, "caption/invalid")
+      then(ignored)
+        capture page
+        return text(page, "Button caption cannot contain interactive controls")
+      then(ignored)
+        capture page
+        return text(page, "Changed caption")
+      then(ignored)
+        capture page
+        return click(page, "caption/collision")
+      then(ignored)
+        capture page
+        return text(page, "Invalid or duplicate control name: outside")
+      then(ignored)
+        capture page
+        return click(page, "Composite action")
+      then(ignored)
+        capture page
+        return text(page, "/action")
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert !Object/hasOwn(request.input, "captionBadge")
+        assert !Object/hasOwn(request.input, "forbidden")
+        assert !Object/hasOwn(request.input, "forbiddenButton")
+        assert request.input.captionText == null
+        assert request.input.outside == "Keep outside"
+        return alerts(page)
+      then(ignored)
+        capture page
+        return cleanup(page)
+
+alerts(page)
+    return chain click(page, "alert/show")
+      then(ignored)
+        capture page
+        return page.getByLabel("Alert note").inputValue()
+      then(value)
+        capture page
+        assert value == "Server note"
+        return page.getByLabel("Alert note").fill("Edited note")
+      then(ignored)
+        capture page
+        return click(page, "Save alert")
+      then(ignored)
+        capture page
+        return text(page, "/alert/save")
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        assert requests[index].input.note == "Edited note"
+        assert requests[index].input.notice == null
+        assert requests[index].token == "Bearer rich-token"
+        return click(page, "alert/invalid")
+      then(ignored)
+        capture page
+        return text(page, "Unsupported control type: unsupported")
+      then(ignored)
+        capture page
+        return page.getByLabel("Alert note").inputValue()
+      then(value)
+        capture page
+        assert value == "Edited note"
+        return click(page, "alert/anchor")
+      then(ignored)
+        capture page
+        return text(page, "Replacement Alert target is inside its previous content")
+      then(ignored)
+        capture page
+        return click(page, "alert/replace")
+      then(ignored)
+        capture page
+        return text(page, "Alert replaced")
+      then(ignored)
+        capture page
+        return page.getByLabel("Alert note").inputValue()
+      then(value)
+        capture page
+        assert value == "Replacement note"
+        return click(page, "alert/cross")
+      then(ignored)
+        capture page
+        return page.getByLabel("Alert detail").waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("Alert note").count()
+      then(count)
+        capture page
+        assert count == 0
+        return click(page, "section/reset")
+      then(ignored)
+        capture page
+        return text(page, "New target")
+      then(ignored)
+        capture page
+        return click(page, "verify")
+      then(ignored)
+        capture page
+        return text(page, "/verify")
+      then(ignored)
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert !Object/hasOwn(request.input, "notice")
+        assert !Object/hasOwn(request.input, "note")
+        assert !Object/hasOwn(request.input, "noticeEditor")
+        assert request.input.outside == "Keep outside"
+
+cleanup(page)
+    state = {}
+    return chain page.getByRole("button", {
+        name: "Composite action"
+    }).elementHandle()
+      then(handle)
+        capture page
+        capture state
+        Object/assign(state, {
+            handle: handle
+        })
+        return click(page, "remove")
+      then(ignored)
+        capture page
+        return text(page, "Rich content removed")
+      then(ignored)
+        capture state
+        global requests
+        Object/assign(state, {
+            count: requests.length
+        })
+        return state.handle.dispatchEvent("click")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        capture state
+        global requests
+        assert requests.length == state.count

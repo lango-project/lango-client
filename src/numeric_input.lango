@@ -1,0 +1,131 @@
+import js global Intl
+import js global Object
+import js global Reflect
+import js global Number
+import js global RegExp
+import js global document
+import "./fields"
+    class Field
+import "./templates"
+    cloneMarkup(name, xml)
+import "./input_changes"
+    class InputChanges
+
+export decimalText(value)
+export numericFormatter(format, money = false)
+
+decimalText(value)
+    if value == null
+        return ""
+    if is_number(value)
+        value = "${value}"
+    if !is_string(value)
+        throw "Numeric value must be a number or decimal text"
+    value = value.trim()
+    if value == ""
+        return ""
+    valid = new RegExp("^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?$")
+    if !valid.test(value)
+        throw "Numeric value requires decimal text with a dot separator"
+    return value
+
+numericFormatter(format, money = false)
+    if !is_object(format) or is_array(format)
+        throw "Numeric format must be an options map"
+    options = Object/assign({}, format)
+    locale = options.locale
+    if locale == null
+        locale = []
+    Reflect/deleteProperty(options, "locale")
+    if money and options.currency != null and options.style == null
+        options.style = "currency"
+    return new Intl/NumberFormat(locale, options)
+
+export class NumericInput(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+        dispose()
+
+NumericInput(form, props)
+    super(form, props, cloneMarkup("numeric-input", <input type="text" class="form-control" inputmode="decimal" />))
+    @number = props.variant.toLowerCase() == "number"
+    @formatter = numericFormatter(props.format, props.variant.toLowerCase() == "money")
+    @changes = new InputChanges(form, props.url)
+    @separator = "."
+    settings = @formatter.resolvedOptions()
+    decimalFormat = new Intl/NumberFormat(settings.locale, {
+        minimumFractionDigits: 1
+    })
+    for decimalFormat.formatToParts(1.1) as part
+        if part.type == "decimal"
+            @separator = part.value
+    if props.placeholder != null
+        @input.placeholder = props.placeholder
+    if props.maxLength != null
+        @input.maxLength = props.maxLength
+    @raw = ""
+    setValue(props.value)
+    focus = ()
+        @input.value = @raw
+    blur = ()
+        display()
+    change = ()
+        @raw = @input.value.replaceAll(@separator, ".")
+        @changes.changed()
+    @input.addEventListener("focus", focus)
+    @input.addEventListener("blur", blur)
+    @input.addEventListener("input", change)
+    release = ()
+        capture focus
+        capture blur
+        capture change
+        @input.removeEventListener("focus", focus)
+        @input.removeEventListener("blur", blur)
+        @input.removeEventListener("input", change)
+    @release.add(release)
+
+NumericInput:formatted(value)
+    for @formatter.formatToParts(value) as part
+        if part.type == "infinity" or part.type == "nan"
+            throw "Numeric value is outside the supported formatting range"
+    return @formatter.format(value)
+
+NumericInput:display()
+    if @raw == ""
+        @input.value = ""
+        return null
+    try
+        @input.value = formatted(decimalText(@raw))
+    catch error
+        @input.value = @raw
+    return null
+
+NumericInput:getValue()
+    value = decimalText(@raw)
+    if @number
+        if value == ""
+            return null
+        return Number/parseFloat(value)
+    if value != ""
+        formatted(value)
+    return value
+
+NumericInput:setValue(value)
+    raw = decimalText(value)
+    rendered = ""
+    if raw != ""
+        rendered = formatted(raw)
+        if @number
+            Number/parseFloat(raw)
+    @raw = raw
+    if document.activeElement == @input
+        @input.value = raw
+      else
+          @input.value = rendered
+    return @this
+
+NumericInput:dispose()
+    @changes.dispose()
+    super.dispose()
+    return null

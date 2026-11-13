@@ -44,7 +44,10 @@ Field(form, props, input)
     input.readOnly = @readonly
     if props.disableAutoComplete == true
         input.autocomplete = "off"
-    setDisabled(props.disabled == true)
+    # Derived fields are not initialized until this constructor returns.
+    input.disabled = props.disabled == true
+    if @readonly and (input.tagName == "SELECT" or input.tagName == "FIELDSET" or input.type == "checkbox" or input.type == "range")
+        input.disabled = true
     validationTarget(input)
 
 Field:setDisabled(value)

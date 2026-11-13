@@ -33,6 +33,7 @@
   "devDependencies": {
     "@lango-project/lango-js": "^0.1.16",
     "bootstrap": "^5.3.9",
+    "esbuild": "^0.28.2",
     "playwright": "^1.65.0"
   },
   "engines": {
@@ -40,6 +41,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.17",
+    "flatpickr": "^4.6.13",
     "marked": "^18.2.0"
   }
 }

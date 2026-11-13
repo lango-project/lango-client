@@ -74,3 +74,22 @@
 .lango-markdown pre { overflow-x: auto; }
 .lango-markdown table { display: block; overflow-x: auto; }
 .lango-markdown :is(td, th) { border: 1px solid var(--bs-border-color); padding: .25rem .5rem; }
+.lango-avatar { position: relative; display: inline-flex; vertical-align: middle; width: var(--lango-avatar-size); height: var(--lango-avatar-size); }
+.lango-avatar-content { display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; background: var(--bs-secondary-bg); }
+.lango-avatar-content :is(.figure, img) { width: 100%; height: 100%; margin: 0; object-fit: cover; }
+.lango-avatar-status { position: absolute; bottom: 0; right: 0; width: 25%; height: 25%; border: 2px solid var(--bs-body-bg); border-radius: 50%; background: var(--bs-secondary); }
+.lango-avatar-status[data-status=online] { background: var(--bs-success); }
+.lango-avatar-status[data-status=busy] { background: var(--bs-danger); }
+.lango-avatar-status[data-status=away] { background: var(--bs-warning); }
+.lango-chip-icon:not(:empty) { margin-inline-end: .4rem; }
+.lango-chip-action { display: inline-block; margin-inline-start: .25rem; }
+.lango-combo { position: relative; }
+.lango-combo-panel { position: absolute; z-index: 1050; inset-inline: 0; max-height: 18rem; overflow: auto; background: var(--bs-body-bg); box-shadow: 0 .3rem .6rem rgb(0 0 0 / .15); }
+.lango-combo-panel ul { list-style: none; padding: 0; margin: 0; }
+.lango-combo-heading { padding: .5rem 1rem; font-weight: 600; }
+.lango-combo-panel [role=option]:focus { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
+.lango-form-spinner { position: absolute; inset: 0; z-index: 1060; display: flex; justify-content: center; align-items: center; gap: .75rem; min-height: 3rem; background: rgba(var(--bs-body-bg-rgb), .65); }
+.lango-form-spinner[hidden] { display: none; }
+.lango-waiting > .lango-form-spinner { filter: none; }
+.lango-custom-spinner::after { display: none; }
+.lango-spinner-rotate { width: 2rem; height: 2rem; border: .25rem dotted currentColor; border-radius: 50%; animation: lango-spin .8s linear infinite; }

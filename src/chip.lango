@@ -1,0 +1,94 @@
+import js global document
+import "./fields"
+    class Field
+    sameValue(first, second)
+import "./templates"
+    cloneMarkup(name, xml)
+import "./rich_content"
+    class RichContent
+
+export class Chip(form, props, renderer) : Field
+    methods
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        setCaption(value)
+        dispose()
+
+Chip(form, props, renderer)
+    super(form, props, cloneMarkup("chip", <button type="button" class="btn rounded-pill lango-chip"><span class="lango-chip-icon" aria-hidden="true"></span><span></span></button>))
+    @locked = props.readonly == true
+    @payload = props.value
+    @active = props.active == true
+    @input.setAttribute("aria-pressed", "${@active}")
+    @input.classList.toggle("active", @active)
+    theme = props.theme
+    if theme == null
+        theme = "secondary"
+    @input.classList.add("btn-outline-${theme.toLowerCase()}")
+    if @labelElement != null
+        @labelElement.className = "visually-hidden"
+    @icon = new RichContent(form, @input.firstElementChild, renderer, false, "Chip icon")
+    if is_string(props.icon)
+        symbol = document/createElement("i")
+        symbol.className = props.icon
+        @input.firstElementChild.appendChild(symbol)
+      else
+          @icon.replace(props.icon)
+    caption = props.label
+    if caption == null and is_string(props.value)
+        caption = props.value
+    setCaption(caption)
+    @action = null
+    if props.button != null
+        if !is_object(props.button) or props.button.type != "button"
+            throw "Chip button requires a Button definition"
+        action = document/createElement("span")
+        action.className = "lango-chip-action"
+        @element.insertBefore(action, @input.nextSibling)
+        @action = new RichContent(form, action, renderer)
+        @action.replace(props.button)
+    setDisabled(props.disabled == true)
+    click = ()
+        @active = !@active
+        paint()
+    @input.addEventListener("click", click)
+    release = ()
+        capture click
+        @input.removeEventListener("click", click)
+    @release.add(release)
+
+Chip:paint()
+    @input.setAttribute("aria-pressed", "${@active}")
+    @input.classList.toggle("active", @active)
+    return null
+
+Chip:getValue()
+    if @active
+        return @payload
+    return null
+
+Chip:setValue(value)
+    if value != null and !sameValue(value, @payload)
+        throw "Chip value does not match its configured value"
+    @active = value != null
+    paint()
+    return @this
+
+Chip:setDisabled(value)
+    @input.disabled = value or @locked == true
+    return @this
+
+Chip:setCaption(value)
+    @input.lastElementChild.textContent = value
+    if @labelElement != null
+        @labelElement.textContent = value
+    return @this
+
+Chip:dispose()
+    if @icon != null
+        @icon.dispose()
+    if @action != null
+        @action.dispose()
+    super.dispose()
+    return null

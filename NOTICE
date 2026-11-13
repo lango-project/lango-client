@@ -1,6 +1,6 @@
 Lango Client
 Copyright 2026 Lango Project contributors
 
-This distribution includes Marked and DOMPurify browser modules.
+This distribution includes Marked, DOMPurify and Flatpickr browser modules.
 Their copyright and license texts are retained in dist/vendor/.
 Bootstrap's license is retained in dist/bootstrap-LICENSE.

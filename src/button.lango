@@ -1,0 +1,49 @@
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+import "./rich_content"
+    class RichContent
+
+export class Button(form, props, renderer) : Control
+    methods
+        setCaption(value)
+        dispose()
+
+Button(form, props, renderer)
+    super(form, props, cloneMarkup("button", <button type="button" class="btn"></button>))
+    @presentations = renderer.presentations
+    @url = props.url
+    @dismiss = props.dismiss == true
+    @content = new RichContent(form, @element, renderer, false)
+    theme = props.theme
+    if theme == null
+        theme = "primary"
+    @element.classList.add("btn-${theme.toLowerCase()}")
+    @element.disabled = props.disabled == true
+    setCaption(props.caption)
+    if @url != null or @dismiss
+        listener = ()
+            if @url == null
+                @presentations.dismiss(@form)
+                return null
+            chain @form.send(@url)
+              then(ignored)
+                if @dismiss
+                    @presentations.dismiss(@form)
+              catch(error)
+                @form.app.error(@form, error)
+        @element.addEventListener("click", listener)
+        release = ()
+            capture listener
+            @element.removeEventListener("click", listener)
+        @release.add(release)
+
+Button:setCaption(value)
+    @content.replace(value)
+    return @this
+
+Button:dispose()
+    @content.dispose()
+    super.dispose()
+    return null

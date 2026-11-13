@@ -4,6 +4,8 @@ import js global Reflect
 import "./templates"
     createTemplate(xml)
     cloneTemplate(template)
+import "./button"
+    class Button
 import "./control"
     class Control
     class Value
@@ -49,6 +51,23 @@ import "./input_group"
 import "./markdown"
     class Markdown
 
+import "./chip"
+    class Chip
+import "./combo_box"
+    class ComboBox
+import "./indicators"
+    class Avatar
+    class FormSpinner
+
+import "./otp_input"
+    class OTPInput
+import "./file_input"
+    class FileInput
+import "./numeric_input"
+    class NumericInput
+import "./date_input"
+    class DateInput
+
 export class BootstrapRenderer()
     properties
         presentations
@@ -66,7 +85,6 @@ BootstrapRenderer()
     @navigation = []
     @presentations = new Presentations(@this)
     @templates = Object/create(null)
-    @templates.button = createTemplate(<button type="button" class="btn"></button>)
     @templates.text = createTemplate(<span></span>)
     @templates.value = createTemplate(<span hidden="hidden"></span>)
     @templates.container = createTemplate(<div></div>)
@@ -77,12 +95,19 @@ BootstrapRenderer()
         range: Range
         select: Select
         radio: Radio
-        alert: Alert
         progress: Progress
         badge: Badge
         markdown: Markdown
+        formSpinner: FormSpinner
+    }
+    @inputs = {
+        otp: OTPInput
+        file: FileInput
+        date: DateInput
     }
     @layouts = {
+        button: Button
+        alert: Alert
         card: Card
         cardGroup: CardGroup
         image: Image
@@ -96,6 +121,9 @@ BootstrapRenderer()
         menu: Menu
         accordion: Accordion
         inputGroup: InputGroup
+        avatar: Avatar
+        chip: Chip
+        comboBox: ComboBox
     }
 
 BootstrapRenderer:registerControlType(name, factory)
@@ -114,8 +142,10 @@ BootstrapRenderer:build(form, props)
             child.inheritedNames = []
         form.register(props.name, child)
         child.element = cloneTemplate(@templates.container)
+        child.spinner = props.spinner
         for props.controls as item
             child.element.appendChild(build(child, item))
+        resolveSpinner(child)
         return child.element
     if props.type in @factories
         custom = @factories[props.type](form, props)
@@ -137,6 +167,13 @@ BootstrapRenderer:build(form, props)
             field = Reflect/construct(ctor, [form, props, @this])
           else
               ctor = @fields[props.type]
+              if props.type == "input" and is_string(props.variant)
+                  variant = props.variant.toLowerCase()
+                  if variant in @inputs
+                      ctor = @inputs[variant]
+                    else
+                        if props.format != null and (variant == "number" or variant == "decimal" or variant == "money")
+                            ctor = NumericInput
               field = Reflect/construct(ctor, [form, props])
         form.register(props.name, field)
         if props.style != null
@@ -167,36 +204,6 @@ BootstrapRenderer:build(form, props)
         for props.aria as name: value
             element.setAttribute("aria-${name}", value)
     switch kind
-      case "button"
-          theme = props.theme
-          if theme == null
-              theme = "primary"
-          element.classList.add("btn-${theme.toLowerCase()}")
-          element.textContent = props.caption
-          element.disabled = props.disabled == true
-          if props.url != null or props.dismiss == true
-              listener = ()
-                  capture form
-                  capture props
-                  if props.url == null
-                      @presentations.dismiss(form)
-                      return null
-                  chain form.send(props.url)
-                    then(ignored)
-                      capture props
-                      capture form
-                      if props.dismiss == true
-                          @presentations.dismiss(form)
-                    catch(error)
-                      capture form
-                      form.app.error(form, error)
-              element.addEventListener("click", listener)
-              release = ()
-                  capture element
-                  capture listener
-                  element.removeEventListener("click", listener)
-              releases = control.release
-              releases.add(release)
       case "text"
           element.textContent = props.text
       case "container"
@@ -209,11 +216,14 @@ BootstrapRenderer:show(form, view)
     previous = form.controls
     owned = form.owned
     inherited = form.inheritedNames
+    spinner = form.spinner
     form.controls = Object/create(null)
     form.owned = []
     content = document/createElement("div")
     try
+        form.spinner = null
         if view.type == "form"
+            form.spinner = view.spinner
             form.inheritedNames = view.inheritedNames
             if form.inheritedNames == null
                 form.inheritedNames = []
@@ -221,6 +231,7 @@ BootstrapRenderer:show(form, view)
                 content.appendChild(build(form, props))
           else
               content.appendChild(build(form, view))
+        resolveSpinner(form)
         form.element.replaceChildren(content)
     catch error
         for form.owned.slice() as control
@@ -228,15 +239,38 @@ BootstrapRenderer:show(form, view)
         form.controls = previous
         form.owned = owned
         form.inheritedNames = inherited
+        form.spinner = spinner
         throw error
     for owned as control
         control.dispose()
     form.clearResources()
+    if form.waiting
+        waiting(form, true)
+    return null
+
+BootstrapRenderer:resolveSpinner(form)
+    value = form.spinner
+    if value == null
+        return null
+    if is_string(value)
+        value = form.find(value)
+      else
+          if is_object(value) and value.type == "formSpinner"
+              definition = value
+              value = new FormSpinner(form, definition)
+              form.register(definition.name, value)
+    if !is_kindof(value, FormSpinner) or value.form != form
+        throw "Form.spinner requires a FormSpinner belonging to this form"
+    form.spinner = value
     return null
 
 BootstrapRenderer:waiting(form, active)
+    form.waiting = active
+    if form.spinner != null
+        form.spinner.show(active)
     if form.element != null
         form.element.classList.toggle("lango-waiting", active)
+        form.element.classList.toggle("lango-custom-spinner", active and form.spinner != null)
         form.element.setAttribute("aria-busy", "${active}")
     return null
 

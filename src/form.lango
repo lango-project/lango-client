@@ -18,12 +18,15 @@ export class Form(app, parent = null, token = null)
         activity
         presentation
         inheritThrough
+        spinner
+        waiting
     methods
         register(name, control)
         unregister(control)
         find(name)
         inherited(name)
         getValue()
+        prepareValue()
         setValue(values)
         setToken(token)
         send(url)
@@ -46,6 +49,8 @@ Form(app, parent = null, token = null)
     @activity = new Activities(@this)
     @presentation = null
     @inheritThrough = false
+    @spinner = null
+    @waiting = false
     app.forms.add(@this)
 
 Form:register(name, control)
@@ -97,6 +102,23 @@ Form:getValue()
         source = inherited(name)
         result[name] = source.getValue()
     return result
+
+Form:prepareValue()
+    pending = []
+    for @controls as name: control
+        if control.prepareValue != null
+            ready = control.prepareValue()
+            if ready != null
+                pending.add(ready)
+    for @inheritedNames as name
+        source = inherited(name)
+        if source.prepareValue != null
+            inheritedReady = source.prepareValue()
+            if inheritedReady != null
+                pending.add(inheritedReady)
+    if pending.length == 0
+        return null
+    return Promise/all(pending)
 
 Form:setValue(values)
     for values as name: value

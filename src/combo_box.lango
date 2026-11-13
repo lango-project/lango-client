@@ -1,0 +1,298 @@
+import js global document
+import "./fields"
+    class Field
+    sameValue(first, second)
+import "./templates"
+    cloneMarkup(name, xml)
+    controlId()
+import "./rich_content"
+    class RichContent
+
+export comboSelection(options, value, multi)
+
+comboSelection(options, value, multi)
+    requested = []
+    if value != null
+        if multi
+            if !is_array(value)
+                throw "Multi ComboBox value must be an array"
+            requested = value
+          else
+              requested.add(value)
+    selected = []
+    for requested as candidate
+        found = -1
+        index = 0
+        for options as option
+            if option.value != null and sameValue(option.value, candidate)
+                found = index
+                break
+            index = index + 1
+        if found < 0
+            throw "ComboBox value does not identify an option"
+        if !selected.includes(found)
+            selected.add(found)
+    return selected
+
+export class ComboBox(form, props, renderer) : Field
+    methods
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        open(last = false)
+        close(focus = false)
+        choose(index)
+        dispose()
+
+ComboBox(form, props, renderer)
+    super(form, props, cloneMarkup("combo-button", <button type="button" class="form-select text-start" role="combobox" aria-haspopup="listbox" aria-expanded="false"></button>))
+    @locked = props.readonly == true
+    @multi = props.multi == true
+    @options = props.options
+    if @options == null
+        @options = []
+    @selected = []
+    @elements = []
+    @slots = []
+    @cursor = -1
+    @element.classList.add("lango-combo")
+    @panel = cloneMarkup("combo-panel", <div class="lango-combo-panel" hidden="hidden"><ul class="list-group" role="listbox"></ul></div>)
+    list = @panel.firstElementChild
+    list.id = controlId()
+    if props.aria != null and props.aria.label != null
+        list.setAttribute("aria-label", props.aria.label)
+      else
+          if props.label != null
+              list.setAttribute("aria-label", props.label)
+    if @multi
+        list.setAttribute("aria-multiselectable", "true")
+    @input.setAttribute("aria-controls", list.id)
+    @element.insertBefore(@panel, @input.nextSibling)
+    group = list
+    index = 0
+    for @options as option
+        if !is_object(option)
+            throw "ComboBox options require value/control maps"
+        if option.url != null
+            if option.value == null
+                throw "ComboBox group cannot have a URL"
+            form.app.checkUrl(option.url)
+        item = document/createElement("li")
+        slot = null
+        if option.value == null
+            item.setAttribute("role", "presentation")
+            heading = document/createElement("div")
+            heading.id = controlId()
+            heading.className = "lango-combo-heading"
+            slot = new RichContent(form, heading, renderer, false, "ComboBox group")
+            slot.replace(option.control)
+            @slots.add(slot)
+            item.appendChild(heading)
+            group = cloneMarkup("combo-group", <ul class="list-group" role="group"></ul>)
+            group.setAttribute("aria-labelledby", heading.id)
+            item.appendChild(group)
+            list.appendChild(item)
+            @elements.add(null)
+          else
+              item.className = "list-group-item list-group-item-action"
+              item.setAttribute("role", "option")
+              item.tabIndex = -1
+              item.id = controlId()
+              slot = new RichContent(form, item, renderer, false, "ComboBox option")
+              slot.replace(option.control)
+              label = item.textContent.trim()
+              content = item.firstElementChild
+              if content != null and content.hasAttribute("aria-label")
+                  label = content.getAttribute("aria-label")
+              if label == ""
+                  labels = []
+                  for item.querySelectorAll("img[alt]") as image
+                      labels.add(image.alt)
+                  label = labels.join(" ").trim()
+              if label == ""
+                  throw "ComboBox option requires text or an accessible label"
+              item.setAttribute("aria-label", label)
+              @slots.add(slot)
+              group.appendChild(item)
+              @elements.add(item)
+              choice = index
+              click = (event)
+                  capture choice
+                  event.preventDefault()
+                  event.stopPropagation()
+                  choose(choice)
+              key = (event)
+                  capture choice
+                  handleKey(event, choice)
+              listen(item, "click", click)
+              listen(item, "keydown", key)
+        index = index + 1
+    setValue(props.value)
+    setDisabled(props.disabled == true)
+    toggle = ()
+        if @panel.hidden
+            open()
+          else
+              close()
+    key = (event)
+        handleKey(event, -1)
+    outside = (event)
+        if !@panel.hidden and !@element.contains(event.target)
+            close()
+    listen(@input, "click", toggle)
+    listen(@input, "keydown", key)
+    listen(document, "pointerdown", outside)
+    listen(document, "focusin", outside)
+
+ComboBox:listen(element, type, listener)
+    element.addEventListener(type, listener)
+    release = ()
+        capture element
+        capture type
+        capture listener
+        element.removeEventListener(type, listener)
+    @release.add(release)
+    return null
+
+ComboBox:getValue()
+    values = []
+    for @selected as index
+        option = @options[index]
+        values.add(option.value)
+    if @multi
+        return values
+    if values.length > 0
+        return values[0]
+    return null
+
+ComboBox:setValue(value)
+    selected = comboSelection(@options, value, @multi)
+    @selected = selected
+    paint()
+    return @this
+
+ComboBox:paint()
+    labels = []
+    index = 0
+    for @elements as item
+        if item != null
+            selected = @selected.includes(index)
+            item.setAttribute("aria-selected", "${selected}")
+            item.classList.toggle("active", selected)
+        index = index + 1
+    for @selected as choice
+        selectedItem = @elements[choice]
+        labels.add(selectedItem.getAttribute("aria-label"))
+    @input.textContent = labels.join(", ")
+    return null
+
+ComboBox:setDisabled(value)
+    @input.disabled = value or @locked == true
+    if @input.disabled and @panel != null
+        close()
+    return @this
+
+ComboBox:open(last = false)
+    if @input.disabled
+        return @this
+    @panel.hidden = false
+    @input.setAttribute("aria-expanded", "true")
+    candidates = []
+    index = 0
+    for @elements as item
+        if item != null
+            candidates.add(index)
+        index = index + 1
+    if candidates.length > 0
+        position = 0
+        if last
+            position = candidates.length - 1
+        @cursor = candidates[position]
+        if !last and @selected.length > 0
+            @cursor = @selected[0]
+        focusChoice(@cursor)
+    return @this
+
+ComboBox:close(focus = false)
+    @panel.hidden = true
+    @input.setAttribute("aria-expanded", "false")
+    if focus
+        @input.focus()
+    return @this
+
+ComboBox:focusChoice(index)
+    item = @elements[index]
+    item.focus()
+    return null
+
+ComboBox:choose(index)
+    if @input.disabled
+        return null
+    option = @options[index]
+    if option.value == null
+        return null
+    if @multi
+        position = @selected.indexOf(index)
+        if position < 0
+            @selected.add(index)
+          else
+              @selected.splice(position, 1)
+      else
+          @selected = [index]
+    paint()
+    if !@multi
+        close(true)
+    if option.url != null
+        return chain @form.send(option.url)
+          catch(error)
+            @form.app.error(@form, error)
+    return null
+
+ComboBox:handleKey(event, index)
+    if event.key == "Escape"
+        event.preventDefault()
+        event.stopPropagation()
+        close(true)
+        return null
+    if index < 0
+        switch event.key
+          case "ArrowDown"
+              event.preventDefault()
+              open()
+          case "ArrowUp"
+              event.preventDefault()
+              open(true)
+        return null
+    if event.key == "Enter" or event.key == " "
+        event.preventDefault()
+        choose(index)
+        return null
+    candidates = []
+    position = 0
+    for @elements as item
+        if item != null
+            candidates.add(position)
+        position = position + 1
+    target = candidates.indexOf(index)
+    switch event.key
+      case "ArrowDown"
+          target = (target + 1) % candidates.length
+      case "ArrowUp"
+          target = (target + candidates.length - 1) % candidates.length
+      case "Home"
+          target = 0
+      case "End"
+          target = candidates.length - 1
+      else
+          return null
+    event.preventDefault()
+    @cursor = candidates[target]
+    focusChoice(@cursor)
+    return null
+
+ComboBox:dispose()
+    for @slots as slot
+        slot.dispose()
+    @slots = []
+    super.dispose()
+    return null

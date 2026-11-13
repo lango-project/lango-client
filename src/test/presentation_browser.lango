@@ -429,7 +429,7 @@ exercise(page)
         return click(page, "Invalid alert")
       then(ignored)
         capture page
-        return text(page, "Alert message must be text")
+        return text(page, "Content must be text or a control")
       then(ignored)
         capture page
         return text(page, "Changed warning")

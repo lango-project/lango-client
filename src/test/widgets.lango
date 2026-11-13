@@ -69,3 +69,129 @@ import "../markdown"
 test "Markdown raw HTML escaping preserves literal markup and entities"
     assert escapeHtml("<b>Text & more</b>") == "&lt;b&gt;Text &amp; more&lt;/b&gt;"
     assert escapeHtml("&lt;") == "&amp;lt;"
+
+import "../combo_box"
+    comboSelection(options, value, multi)
+
+test "ComboBox preserves structured option identity and skips group headings"
+    options = [{
+        value: null
+    }, {
+        value: {
+            code: 7
+        }
+    }, {
+        value: false
+    }, {
+        value: "https://example.test/value"
+    }]
+    selected = comboSelection(options, {
+        code: 7
+    }, false)
+    assert selected.length == 1
+    assert selected[0] == 1
+    selected = comboSelection(options, [false, false, "https://example.test/value"], true)
+    assert selected.length == 2
+    assert selected[0] == 2
+    assert selected[1] == 3
+    assert comboSelection(options, null, true).length == 0
+
+test "ComboBox rejects invalid selections without modifying option data"
+    options = [{
+        value: "a"
+    }]
+    for ["missing", 7, [null]] as value
+        failed = false
+        try
+            comboSelection(options, value, true)
+        catch error
+            failed = true
+        assert failed
+    assert options[0].value == "a"
+
+import "../date_input"
+    dateText(value)
+    dateRange(value, min = null, max = null)
+import "../otp_input"
+    otpSettings(length = null, characters = null)
+    otpText(value, settings, strict = false)
+import "../numeric_input"
+    decimalText(value)
+    numericFormatter(format, money = false)
+import "../file_input"
+    fileLimit(value = null)
+
+test "calendar ranges validate real dates and bounds without time zone conversion"
+    assert dateText("2024-02-29") == "2024-02-29"
+    empty = dateRange(null)
+    assert empty.start == null
+    assert empty.end == null
+    failed = false
+    for ["2023-02-29", "2024-13-01", "2024-04-31", "2024-1-01", "0000-01-01"] as text
+        failed = false
+        try
+            dateText(text)
+        catch error
+            failed = true
+        assert failed
+    failed = false
+    try
+        dateRange({
+            start: "2024-02-20"
+            end: "2024-02-10"
+        })
+    catch error
+        failed = true
+    assert failed
+    failed = false
+    try
+        dateRange({
+            start: "2024-02-10"
+        }, "2024-03-01")
+    catch error
+        failed = true
+    assert failed
+
+test "OTP keeps leading zeroes and filters pasted text using its character policy"
+    numeric = otpSettings()
+    assert otpText("001234", numeric, true) == "001234"
+    assert otpText("a00-1234567", numeric) == "001234"
+    alpha = otpSettings(4, "alpha")
+    assert otpText("A1b-C2d", alpha) == "AbCd"
+    failed = false
+    try
+        otpText("12x", numeric, true)
+    catch error
+        failed = true
+    assert failed
+
+test "numeric display formatting never rounds the decimal string used as data"
+    raw = "12345678901234567890.1234"
+    assert decimalText(raw) == raw
+    formatter = numericFormatter({
+        locale: "en-US"
+        maximumFractionDigits: 4
+    })
+    assert formatter.format(raw) == "12,345,678,901,234,567,890.1234"
+    currency = numericFormatter({
+        locale: "de-DE"
+        currency: "EUR"
+    }, true)
+    assert currency.format("1234.5").includes("1.234,50")
+    failed = false
+    try
+        decimalText("1,234.5")
+    catch error
+        failed = true
+    assert failed
+
+test "file limits default to one MiB and reject ambiguous byte limits"
+    assert fileLimit() == 1048576
+    assert fileLimit(10) == 10
+    for [0, -1, 2.5, "100"] as value
+        failed = false
+        try
+            fileLimit(value)
+        catch error
+            failed = true
+        assert failed

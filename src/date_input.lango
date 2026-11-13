@@ -1,0 +1,215 @@
+import js "flatpickr" as picker
+import js global Intl
+import js global Date
+import js global Number
+import js global RegExp
+import js global Object
+import "./fields"
+    class Field
+import "./templates"
+    cloneMarkup(name, xml)
+import "./input_changes"
+    class InputChanges
+
+export dateText(value)
+export dateRange(value, min = null, max = null)
+
+dateText(value)
+    if value == null or value == ""
+        return null
+    pattern = new RegExp("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    if !is_string(value) or !pattern.test(value)
+        throw "Date requires YYYY-MM-DD calendar text"
+    year = Number/parseInt(value.slice(0, 4), 10)
+    month = Number/parseInt(value.slice(5, 7), 10)
+    day = Number/parseInt(value.slice(8, 10), 10)
+    days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    if year < 1 or month < 1 or month > 12
+        throw "Invalid calendar date"
+    if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+        days[1] = 29
+    index = month - 1
+    if day < 1 or day > days[index]
+        throw "Invalid calendar date"
+    return value
+
+dateRange(value, min = null, max = null)
+    if value == null
+        value = {}
+    if !is_object(value) or is_array(value)
+        throw "Date value requires a start/end map"
+    start = dateText(value.start)
+    end = dateText(value.end)
+    if end != null and (start == null or end.localeCompare(start) < 0)
+        throw "Date range end must not precede its start"
+    for [start, end] as date
+        if date != null and ((min != null and date.localeCompare(min) < 0) or (max != null and date.localeCompare(max) > 0))
+            throw "Date is outside its min/max range"
+    return {
+        start: start
+        end: end
+    }
+
+calendarLocale(options)
+    locale = options.locale
+    if locale == null
+        locale = []
+    months = []
+    shortMonths = []
+    weekdays = []
+    shortWeekdays = []
+    month = new Intl/DateTimeFormat(locale, {
+        month: "long"
+        timeZone: "UTC"
+    })
+    shortMonth = new Intl/DateTimeFormat(locale, {
+        month: "short"
+        timeZone: "UTC"
+    })
+    day = new Intl/DateTimeFormat(locale, {
+        weekday: "long"
+        timeZone: "UTC"
+    })
+    shortDay = new Intl/DateTimeFormat(locale, {
+        weekday: "short"
+        timeZone: "UTC"
+    })
+    index = 0
+    stamp = null
+    loop while index < 12
+        stamp = Date/UTC(2020, index, 1)
+        months.add(month.format(stamp))
+        shortMonths.add(shortMonth.format(stamp))
+        index = index + 1
+    index = 1
+    loop while index <= 7
+        stamp = Date/UTC(2020, 10, index)
+        weekdays.add(day.format(stamp))
+        shortWeekdays.add(shortDay.format(stamp))
+        index = index + 1
+    return {
+        weekdays: {
+            longhand: weekdays
+            shorthand: shortWeekdays
+        }
+        months: {
+            longhand: months
+            shorthand: shortMonths
+        }
+        rangeSeparator: " – "
+        monthAriaLabel: ""
+        yearAriaLabel: ""
+    }
+
+export class DateInput(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        dispose()
+
+DateInput(form, props)
+    super(form, props, cloneMarkup("date-input", <input type="text" class="form-control" />))
+    @changes = new InputChanges(form, props.url)
+    @locked = props.readonly == true
+    @min = dateText(props.min)
+    @max = dateText(props.max)
+    if @min != null and @max != null and @min.localeCompare(@max) > 0
+        throw "Date min must not exceed max"
+    @range = dateRange(props.value, @min, @max)
+    months = props.multiMonth
+    if months == null
+        months = 1
+    if !is_number(months) or !Number/isInteger(months) or months < 1 or months > 12
+        throw "Date multiMonth must be an integer between 1 and 12"
+    first = props.firstWeekDay
+    if first == null
+        first = 1
+    if !is_number(first) or !Number/isInteger(first) or first < 0 or first > 6
+        throw "Date firstWeekDay must be an integer between 0 and 6"
+    format = {}
+    if is_string(props.format)
+        format.display = props.format
+      else
+          if props.format != null
+              if !is_object(props.format) or is_array(props.format)
+                  throw "Date format must be a display format or options map"
+              format = Object/assign({}, props.format)
+    display = format.display
+    if display == null
+        display = "Y-m-d"
+    locale = calendarLocale(format)
+    locale.firstDayOfWeek = first
+    if props.label != null
+        locale.monthAriaLabel = props.label
+        locale.yearAriaLabel = props.label
+    if format.calendar != null
+        locale = Object/assign(locale, format.calendar)
+    createPicker = picker.default
+    change = (dates)
+        if @input.disabled
+            setValue(@range)
+            return null
+        start = null
+        end = null
+        if dates.length > 0
+            start = @picker.formatDate(dates[0], "Y-m-d")
+        if dates.length > 1
+            end = @picker.formatDate(dates[1], "Y-m-d")
+        @range = dateRange({
+            start: start
+            end: end
+        }, @min, @max)
+        @changes.changed()
+    options = {
+        mode: "range"
+        dateFormat: display
+        showMonths: months
+        locale: locale
+        inline: props.inline == true
+        appendTo: @element
+        disableMobile: true
+        allowInput: false
+        onChange: change
+    }
+    if @min != null
+        options.minDate = createPicker.parseDate(@min, "Y-m-d")
+    if @max != null
+        options.maxDate = createPicker.parseDate(@max, "Y-m-d")
+    @picker = createPicker(@input, options)
+    if props.button == true
+        @input.className = "btn btn-outline-secondary"
+    setValue(@range)
+    setDisabled(props.disabled == true)
+
+DateInput:getValue()
+    return {
+        start: @range.start
+        end: @range.end
+    }
+
+DateInput:setValue(value)
+    range = dateRange(value, @min, @max)
+    dates = []
+    if range.start != null
+        dates.add(range.start)
+    if range.end != null
+        dates.add(range.end)
+    @picker.setDate(dates, false, "Y-m-d")
+    @range = range
+    return @this
+
+DateInput:setDisabled(value)
+    @input.disabled = value or @locked == true
+    if @picker != null
+        calendar = @picker.calendarContainer
+        calendar.inert = @input.disabled
+        if @input.disabled
+            @picker.close()
+    return @this
+
+DateInput:dispose()
+    @changes.dispose()
+    @picker.destroy()
+    super.dispose()
+    return null

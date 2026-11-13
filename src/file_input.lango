@@ -1,0 +1,175 @@
+import js global FileReader
+import js global Promise
+import js global Number
+import "./fields"
+    class Field
+import "./templates"
+    cloneMarkup(name, xml)
+import "./input_changes"
+    class InputChanges
+
+export fileLimit(value = null)
+
+fileLimit(value = null)
+    if value == null
+        return 1048576
+    if !is_number(value) or !Number/isSafeInteger(value) or value < 1
+        throw "File maxBytes must be a positive safe integer"
+    return value
+
+export class FileInput(form, props) : Field
+    methods
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        prepareValue()
+        dispose()
+
+FileInput(form, props)
+    super(form, props, cloneMarkup("file-input", <input type="file" class="form-control" />))
+    @limit = fileLimit(props.maxBytes)
+    @locked = props.readonly == true
+    @changes = new InputChanges(form, props.url)
+    @generation = 0
+    @pending = null
+    @reader = null
+    @data = null
+    @failure = null
+    @closed = false
+    if props.accept != null
+        if !is_string(props.accept)
+            throw "File accept must be text"
+        @input.accept = props.accept
+    setValue(props.value)
+    setDisabled(props.disabled == true)
+    listener = ()
+        changed()
+    @input.addEventListener("change", listener)
+    release = ()
+        capture listener
+        @input.removeEventListener("change", listener)
+    @release.add(release)
+
+FileInput:clear()
+    @generation = @generation + 1
+    if @reader != null
+        @reader.abort()
+        @reader = null
+    @pending = null
+    @data = null
+    @failure = null
+    return null
+
+FileInput:setValue(value)
+    if value != null
+        throw "File values can only be cleared programmatically"
+    clear()
+    @input.value = ""
+    return @this
+
+FileInput:setDisabled(value)
+    @input.disabled = value or @locked == true
+    return @this
+
+FileInput:changed()
+    clear()
+    files = @input.files
+    if files.length == 0
+        @changes.changed()
+        return null
+    file = files[0]
+    if file.size > @limit
+        @failure = "File exceeds its ${@limit}-byte limit"
+        @form.app.error(@form, @failure)
+        return null
+    generation = @generation
+    reader = new FileReader()
+    @reader = reader
+    @pending = readFile(reader, file)
+    chain @pending
+      then(data)
+        capture generation
+        if generation == @generation and !@closed
+            @reader = null
+            @data = data
+            @changes.changed()
+      catch(error)
+        capture generation
+        if generation == @generation and !@closed
+            @reader = null
+            @failure = error
+            @form.app.error(@form, error)
+    return null
+
+FileInput:prepareValue()
+    if @closed
+        return Promise/reject("File field is disposed")
+    if @failure != null
+        return Promise/reject(@failure)
+    if @pending == null
+        return Promise/resolve(null)
+    pending = @pending
+    return chain pending
+      catch(error)
+        capture pending
+        if pending == @pending
+            throw error
+      then(ignored)
+        capture pending
+        if pending != @pending
+            return prepareValue()
+        if @closed
+            throw "File field is disposed"
+        return null
+
+FileInput:getValue()
+    if @failure != null
+        throw @failure
+    if @reader != null
+        throw "File is still being read"
+    return @data
+
+FileInput:dispose()
+    @closed = true
+    clear()
+    @changes.dispose()
+    super.dispose()
+    return null
+
+readFile(reader, file)
+    pending = new Promise((resolve, reject)
+        capture reader
+        capture file
+        load = ()
+            capture reader
+            capture file
+            capture resolve
+            value = reader.result
+            comma = value.indexOf(",")
+            mime = file.type
+            if mime == ""
+                mime = "application/octet-stream"
+            resolve({
+                name: file.name
+                mimeType: mime
+                size: file.size
+                content: value.slice(comma + 1)
+            })
+        fail = ()
+            capture reject
+            reject("File could not be read")
+        abort = ()
+            capture reject
+            reject("File read cancelled")
+        reader.addEventListener("load", load, {
+            once: true
+        })
+        reader.addEventListener("error", fail, {
+            once: true
+        })
+        reader.addEventListener("abort", abort, {
+            once: true
+        })
+        reader.readAsDataURL(file)
+    )
+    return pending
