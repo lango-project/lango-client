@@ -480,11 +480,12 @@ invalidates old reads and cancels their reader. Only null may be assigned throug
 `values`, clearing the selection; the browser never accepts a server-supplied
 local file. Optional `url` is debounced after successful reading.
 
-Base64 increases request size. Lango Server's default `bodyLimit` is 1 MiB,
-which cannot hold a full 1 MiB binary file in JSON. Configure at least 2 MiB
-(`bodyLimit: 2097152`) for one such file, and more if other form values require
-it. This client change does not increase the server limit. Large-file streaming
-and a separate upload protocol remain outside this implementation.
+Base64 increases request size. Lango Server now defaults to a 2 MiB `bodyLimit`
+(2097152 bytes), sufficient for one 1 MiB file encoded in JSON with ordinary form
+metadata. Older server releases still default to 1 MiB and need an explicit
+`bodyLimit: 2097152`. Larger combined form payloads require a higher server limit.
+Large-file streaming and a separate upload protocol remain outside this
+implementation.
 
 For Number/Decimal/Money, supplying `format` enables a formatted text input.
 The map contains optional `locale` plus Intl.NumberFormat options; Money with
