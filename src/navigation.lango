@@ -1,0 +1,219 @@
+import js global document
+import js global URL
+import js global ResizeObserver
+import js global RegExp
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+import "./content"
+    appendContent(form, element, content, renderer)
+    decorate(control, props)
+
+export navigationMatch(url, current)
+
+navigationMatch(url, current)
+    target = new URL(url, current)
+    location = new URL(current)
+    if target.origin != location.origin
+        return -1
+    path = target.pathname
+    if path == location.pathname
+        return path.length
+    if path != "/" and location.pathname.startsWith("${path.replace(new RegExp("/+$"), "")}/")
+        return path.length
+    return -1
+
+export class Nav(form, props, renderer, navigationBar = false) : Control
+    methods
+        locationChanged(url)
+        fit()
+
+Nav(form, props, renderer, navigationBar = false)
+    super(form, props, cloneMarkup("nav", <nav class="nav lango-nav"></nav>))
+    @items = []
+    @overflow = props.overflow != null
+    @url = form.app.hostUrl()
+    if navigationBar
+        @element.classList.add("navbar")
+        if props.brand != null
+            brand = document/createElement("div")
+            brand.className = "navbar-brand"
+            appendContent(form, brand, props.brand, renderer)
+            @element.appendChild(brand)
+    switch props.alignment
+      case "center"
+          @element.classList.add("justify-content-center")
+      case "end"
+          @element.classList.add("justify-content-end")
+      case "vertical"
+          @element.classList.add("flex-column")
+      case "fill"
+          @element.classList.add("nav-fill")
+    placement = null
+    if props.items != null
+        for props.items as definition
+            if definition.type != "navItem" and definition.type != "navBarItem"
+                throw "Nav accepts NavItem definitions"
+            item = new NavItem(form, definition, renderer)
+            form.register(definition.name, item)
+            @items.add(item)
+            @element.appendChild(item.element)
+            if definition.placement != null
+                if placement != null and placement != definition.placement
+                    throw "Navbar items must agree on placement"
+                placement = definition.placement
+                switch definition.placement
+                  case "fixed-top"
+                  case "fixed-bottom"
+                  case "sticky-top"
+                  case "sticky-bottom"
+                      @element.classList.add(definition.placement)
+                  else
+                      throw "Unknown navbar placement: ${definition.placement}"
+    locationChanged(@url)
+    groups = renderer.navigation
+    groups.add(@this)
+    release = ()
+        capture groups
+        index = groups.indexOf(@this)
+        if index >= 0
+            groups.splice(index, 1)
+    @release.add(release)
+    if @overflow
+        observer = new ResizeObserver(()
+            fit()
+        )
+        observer.observe(@element)
+        stop = ()
+            capture observer
+            observer.disconnect()
+        @release.add(stop)
+
+export class NavBar(form, props, renderer) : Nav
+
+NavBar(form, props, renderer)
+    super(form, props, renderer, true)
+
+Nav:locationChanged(url)
+    best = -1
+    selected = null
+    for @items as item
+        if item.url != null
+            score = navigationMatch(item.url, url)
+            if score > best
+                best = score
+                selected = item
+    for @items as item
+        active = item.initial
+        if item.url != null
+            active = item == selected
+        item.element.classList.toggle("active", active)
+        if active
+            item.element.setAttribute("aria-current", "page")
+          else
+              item.element.removeAttribute("aria-current")
+    return null
+
+Nav:fit()
+    @element.classList.remove("lango-nav-compact")
+    if @element.scrollWidth > @element.clientWidth
+        @element.classList.add("lango-nav-compact")
+    return null
+
+export class NavItem(form, props, renderer) : Control
+    properties
+        url
+        initial
+    methods
+        setCaption(value)
+
+NavItem(form, props, renderer)
+    super(form, props, navElement(props.url))
+    @url = props.url
+    @initial = props.active == true
+    @element.classList.add("nav-link")
+    appendNavContent(form, @element, props.content, renderer)
+    if @url != null and @element.querySelector("a, button, input, select, textarea, [contenteditable]") != null
+        throw "A linked NavItem cannot contain interactive controls"
+    @element.setAttribute("aria-label", @element.textContent)
+    @element.title = @element.textContent
+    decorate(@this, props)
+    if props.keepVisible == true or @element.querySelector("img, svg, i, .bi") == null
+        @element.classList.add("lango-nav-keep")
+    if props.theme != null
+        @element.classList.add("text-bg-${props.theme.toLowerCase()}")
+    if props.dark == true
+        @element.setAttribute("data-bs-theme", "dark")
+    if props.translucent == true
+        @element.style.setProperty("--bs-bg-opacity", ".85")
+
+NavItem:setCaption(value)
+    @element.textContent = value
+    @element.setAttribute("aria-label", value)
+    @element.title = value
+    @element.classList.add("lango-nav-keep")
+    return @this
+
+export class NavBarItem(form, props, renderer) : NavItem
+
+NavBarItem(form, props, renderer)
+    super(form, props, renderer)
+
+navElement(url)
+    if url == null
+        return cloneMarkup("nav-content", <div></div>)
+    if !is_string(url) or url.trim() == ""
+        throw "NavItem URL must be nonempty text"
+    target = new URL(url, document.baseURI)
+    if target.protocol != "http:" and target.protocol != "https:"
+        throw "Unsupported navigation URL"
+    element = document/createElement("a")
+    element.href = target.href
+    return element
+
+appendNavContent(form, element, content, renderer)
+    if content == null
+        return null
+    if is_array(content)
+        for content as child
+            appendNavContent(form, element, child, renderer)
+      else
+          if is_string(content) or is_number(content)
+              label = document/createElement("span")
+              label.className = "lango-nav-label"
+              label.textContent = "${content}"
+              element.appendChild(label)
+            else
+                child = renderer.build(form, content)
+                if content.type == "text"
+                    child.classList.add("lango-nav-label")
+                element.appendChild(child)
+    return null
+
+export class Breadcrumb(form, props, renderer) : Control
+
+Breadcrumb(form, props, renderer)
+    super(form, props, cloneMarkup("breadcrumb", <nav><ol class="breadcrumb"></ol></nav>))
+    list = @element.firstElementChild
+    if props.divider != null
+        list.style.setProperty("--bs-breadcrumb-divider", to_json("${props.divider}"))
+    if props.items != null
+        for props.items as definition
+            if definition.type != "breadcrumbItem"
+                throw "Breadcrumb accepts BreadcrumbItem definitions"
+            item = new BreadcrumbItem(form, definition)
+            form.register(definition.name, item)
+            list.appendChild(item.element)
+    if list.lastElementChild != null
+        list.lastElementChild.classList.add("active")
+        list.lastElementChild.setAttribute("aria-current", "page")
+
+export class BreadcrumbItem(form, props) : Control
+
+BreadcrumbItem(form, props)
+    super(form, props, cloneMarkup("breadcrumb-item", <li class="breadcrumb-item"></li>))
+    decorate(@this, props)
+    content = navElement(props.url)
+    content.textContent = props.text
+    @element.appendChild(content)

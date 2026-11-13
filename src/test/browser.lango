@@ -11,6 +11,25 @@ import "./resource_browser"
     alias resourceServer = serve(req, res)
     alias resetResources = reset()
     alias exerciseResources = exercise(page)
+import "./presentation_browser"
+    alias presentationServer = serve(req, res)
+    alias resetPresentations = reset()
+    alias exercisePresentations = exercise(page)
+
+import "./catalog_browser"
+    alias catalogServer = serve(req, res)
+    alias resetCatalog = reset()
+    alias exerciseCatalog = exercise(page)
+
+import "./collections_browser"
+    alias collectionsServer = serve(req, res)
+    alias resetCollections = reset()
+    alias exerciseCollections = exercise(page)
+
+import "./content_browser"
+    alias contentServer = serve(req, res)
+    alias resetContent = reset()
+    alias exerciseContent = exercise(page)
 
 global requests = []
 
@@ -363,6 +382,190 @@ test "browser resources cancel held HTTP polls and report only bounded technical
       then(ignored)
         capture state
         return exerciseResources(state.page)
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "presentations preserve dialog state and clean named alerts, toasts and progress"
+    resetPresentations()
+    server = http/createServer(presentationServer)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.setDefaultTimeout(10000)
+        page.on("pageerror", errorHandler)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/presentations")
+      then(ignored)
+        capture state
+        return chain exercisePresentations(state.page)
+          catch(error)
+            capture state
+            return chain state.page.locator("body").innerText()
+              then(text)
+                capture error
+                println("Presentation test DOM: ${text}")
+                throw error
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "cards, tables, tabs and navigation preserve form scopes and release listeners"
+    resetCatalog()
+    server = http/createServer(catalogServer)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.setDefaultTimeout(10000)
+        page.on("pageerror", errorHandler)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/catalog")
+      then(ignored)
+        capture state
+        return chain exerciseCatalog(state.page)
+          catch(error)
+            capture state
+            return chain state.page.locator("body").innerText()
+              then(text)
+                capture error
+                println("Presentation test DOM: ${text}")
+                throw error
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "menus, lists and accordion preserve selection, form ownership and disposal"
+    resetCollections()
+    server = http/createServer(collectionsServer)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.setDefaultTimeout(10000)
+        page.on("pageerror", errorHandler)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/collections")
+      then(ignored)
+        capture state
+        return chain exerciseCollections(state.page)
+          catch(error)
+            capture state
+            return chain state.page.locator("body").innerText()
+              then(text)
+                capture error
+                println("Collections test DOM: ${text}")
+                throw error
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "InputGroup preserves fields and Markdown renders sanitized local assets"
+    resetContent()
+    server = http/createServer(contentServer)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage()
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.setDefaultTimeout(10000)
+        page.on("pageerror", errorHandler)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/content")
+      then(ignored)
+        capture state
+        return chain exerciseContent(state.page)
+          catch(error)
+            capture state
+            return chain state.page.locator("body").innerText()
+              then(text)
+                capture error
+                println("Content test DOM: ${text}")
+                throw error
       finally
         capture server
         capture state

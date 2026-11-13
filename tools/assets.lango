@@ -9,4 +9,13 @@ main(args)
     fs/copyFileSync("node_modules/bootstrap/dist/css/bootstrap.min.css", "dist/bootstrap.min.css")
     fs/copyFileSync("node_modules/bootstrap/dist/css/bootstrap.min.css.map", "dist/bootstrap.min.css.map")
     fs/copyFileSync("node_modules/bootstrap/LICENSE", "dist/bootstrap-LICENSE")
+    fs/mkdirSync("dist/vendor", {
+        recursive: true
+    })
+    fs/copyFileSync("node_modules/marked/lib/marked.esm.js", "dist/vendor/marked.mjs")
+    fs/copyFileSync("node_modules/marked/lib/marked.esm.js.map", "dist/vendor/marked.esm.js.map")
+    fs/copyFileSync("node_modules/marked/LICENSE", "dist/vendor/marked-LICENSE.md")
+    fs/copyFileSync("node_modules/dompurify/dist/purify.es.mjs", "dist/vendor/dompurify.mjs")
+    fs/copyFileSync("node_modules/dompurify/dist/purify.es.mjs.map", "dist/vendor/purify.es.mjs.map")
+    fs/copyFileSync("node_modules/dompurify/LICENSE", "dist/vendor/DOMPurify-LICENSE")
     return null

@@ -1,0 +1,130 @@
+import js global document
+import js global Math
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+
+export progressRange(min, max, value = null)
+export class Progress(form, props) : Control
+    methods
+        setRange(min, max, value = null)
+        update(value, label = null)
+        paint(range)
+
+Progress(form, props)
+    super(form, props, cloneMarkup("progress", <div class="progress lango-progress" role="progressbar"><div class="progress-bar"></div><span class="lango-progress-label"></span></div>))
+    @bar = @element.firstElementChild
+    @label = @element.lastElementChild
+    if props.theme != null
+        @bar.classList.add("bg-${props.theme.toLowerCase()}")
+    if props.striped == true or props.animatedStripe == true
+        @bar.classList.add("progress-bar-striped")
+    if props.animatedStripe == true
+        @bar.classList.add("progress-bar-animated")
+    min = props.min
+    max = props.max
+    if min == null
+        min = 0
+    if max == null
+        max = 100
+    setRange(min, max, props.value)
+
+Progress:setRange(min, max, value = null)
+    range = progressRange(min, max, value)
+    paint(range)
+    return @this
+
+Progress:update(value, label = null)
+    range = progressRange(@min, @max, value)
+    paint(range)
+    if label != null
+        @label.textContent = label
+        if label == ""
+            @element.removeAttribute("aria-valuetext")
+          else
+              @element.setAttribute("aria-valuetext", "${label}")
+    return @this
+
+Progress:paint(range)
+    @min = range.min
+    @max = range.max
+    @element.setAttribute("aria-valuemin", "${range.min}")
+    @element.setAttribute("aria-valuemax", "${range.max}")
+    @element.classList.toggle("lango-indeterminate", range.value == null)
+    if range.value == null
+        @element.removeAttribute("aria-valuenow")
+        @bar.style.width = "100%"
+      else
+          @element.setAttribute("aria-valuenow", "${range.value}")
+          @bar.style.width = "${range.percent}%"
+    return null
+
+progressRange(min, max, value = null)
+    if !is_number(min) or !is_number(max) or max <= min
+        throw "Progress requires a numeric range with max greater than min"
+    current = null
+    percent = null
+    if value != null
+        if !is_number(value)
+            throw "Progress value must be a number or null"
+        current = Math/min(max, Math/max(min, value))
+        percent = (current - min) / (max - min) * 100
+    return {
+        min: min
+        max: max
+        value: current
+        percent: percent
+    }
+
+export class Alert(form, props) : Control
+    methods
+        close()
+        attach(form)
+        dispose()
+
+Alert(form, props)
+    super(form, props, cloneMarkup("alert", <div class="alert" role="alert"><span></span></div>))
+    @owners = [form]
+    @closed = false
+    if props.message != null and !is_string(props.message)
+        throw "Alert message must be text"
+    @element.firstElementChild.textContent = props.message
+    theme = props.theme
+    if theme == null
+        theme = "primary"
+    @element.classList.add("alert-${theme.toLowerCase()}")
+    if props.closeButton != false
+        button = document/createElement("button")
+        button.type = "button"
+        button.className = "btn-close"
+        button.setAttribute("aria-label", "×")
+        @element.classList.add("alert-dismissible")
+        @element.appendChild(button)
+        listener = ()
+            close()
+        button.addEventListener("click", listener)
+        release = ()
+            capture button
+            capture listener
+            button.removeEventListener("click", listener)
+        @release.add(release)
+
+Alert:close()
+    dispose()
+    return null
+
+Alert:attach(form)
+    if !@owners.includes(form)
+        form.register(null, @this)
+        @owners.add(form)
+    return null
+
+Alert:dispose()
+    if !@closed
+        @closed = true
+        for @owners as owner
+            owner.unregister(@this)
+        super.dispose()
+        @element.remove()
+    return null

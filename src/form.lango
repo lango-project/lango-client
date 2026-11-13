@@ -1,4 +1,5 @@
 import js global Object
+import js global Reflect
 import js global Promise
 import "./activities"
     class Activities
@@ -15,9 +16,13 @@ export class Form(app, parent = null, token = null)
         element
         resources
         activity
+        presentation
+        inheritThrough
     methods
         register(name, control)
+        unregister(control)
         find(name)
+        inherited(name)
         getValue()
         setValue(values)
         setToken(token)
@@ -39,6 +44,8 @@ Form(app, parent = null, token = null)
     @element = null
     @resources = []
     @activity = new Activities(@this)
+    @presentation = null
+    @inheritThrough = false
     app.forms.add(@this)
 
 Form:register(name, control)
@@ -50,18 +57,35 @@ Form:register(name, control)
     @controls[name] = control
     return control
 
+Form:unregister(control)
+    for Object/keys(@controls) as name
+        if @controls[name] == control
+            Reflect/deleteProperty(@controls, name)
+    index = @owned.indexOf(control)
+    if index >= 0
+        @owned.splice(index, 1)
+    return null
+
 Form:find(name)
     parts = name.split("/")
     current = @controls[parts.shift()]
     if current == null
         if @inheritedNames.includes(name) and @parent != null
-            return @parent.find(name)
+            return inherited(name)
         throw "Unknown control: ${name}"
     if parts.length > 0
-        if !is_kindof(current, Form)
-            throw "Control is not a form: ${name}"
+        if current.find == null
+            throw "Control has no named children: ${name}"
         return current.find(parts.join("/"))
     return current
+
+Form:inherited(name)
+    parent = @parent
+    loop while parent != null and parent.inheritThrough
+        parent = parent.parent
+    if parent == null
+        throw "Inherited value has no parent: ${name}"
+    return parent.find(name)
 
 Form:getValue()
     result = Object/create(null)
@@ -70,7 +94,7 @@ Form:getValue()
     for @inheritedNames as name
         if @parent == null or name in result
             throw "Invalid inherited name: ${name}"
-        source = @parent.find(name)
+        source = inherited(name)
         result[name] = source.getValue()
     return result
 
@@ -80,7 +104,7 @@ Form:setValue(values)
     return @this
 
 Form:clearValidation()
-    for @owned as control
+    for @controls as name: control
         if control.clearValidation != null
             control.clearValidation()
     for @inheritedNames as name
@@ -137,7 +161,7 @@ Form:dispose()
     if @disposed
         return null
     @disposed = true
-    for @owned as control
+    for @owned.slice() as control
         control.dispose()
     clearResources()
     @controls = Object/create(null)

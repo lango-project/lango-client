@@ -4,6 +4,7 @@ import "./templates"
 
 export class Control(form, props, element)
     properties
+        form
         element
         release
     methods
@@ -17,6 +18,7 @@ export class Control(form, props, element)
         dispose()
 
 Control(form, props, element)
+    @form = form
     @element = element
     @value = props.value
     @release = []

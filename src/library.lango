@@ -1,3 +1,39 @@
+import "./input_group"
+    alias InputGroupClass = class InputGroup
+import "./markdown"
+    alias MarkdownClass = class Markdown
+import "./accordion"
+    alias AccordionClass = class Accordion
+    alias AccordionItemClass = class AccordionItem
+import "./collections"
+    alias ListGroupClass = class ListGroup
+import "./menus"
+    alias MenuClass = class Menu
+    alias MenuItemClass = class MenuItem
+import "./layouts"
+    alias CardClass = class Card
+    alias CardGroupClass = class CardGroup
+    alias ImageClass = class Image
+    alias BadgeClass = class Badge
+    alias ToolbarClass = class Toolbar
+import "./tables"
+    alias TableClass = class Table
+    alias TableHeaderClass = class TableHeader
+    alias TableRowClass = class TableRow
+    alias TableCellClass = class TableCell
+    alias TableColClass = class TableCol
+    alias TableDividerClass = class TableDivider
+import "./tabs"
+    alias TabClass = class Tab
+    alias TabItemClass = class TabItem
+import "./navigation"
+    alias NavClass = class Nav
+    alias NavBarClass = class NavBar
+    alias NavItemClass = class NavItem
+    alias NavBarItemClass = class NavBarItem
+    alias BreadcrumbClass = class Breadcrumb
+    alias BreadcrumbItemClass = class BreadcrumbItem
+
 import "./app"
     alias AppClass = class App
 import "./form"
@@ -18,7 +54,40 @@ import "./fields"
 import "./templates"
     alias makeTemplate = createTemplate(xml)
     alias copyTemplate = cloneTemplate(template)
+import "./widgets"
+    alias AlertClass = class Alert
+    alias ProgressClass = class Progress
+import "./presentations"
+    alias ToastClass = class Toast
+    alias ToastStackClass = class ToastStack
+    alias DialogClass = class Dialog
 
+export global InputGroup
+export global Markdown
+export global Accordion
+export global AccordionItem
+export global ListGroup
+export global Menu
+export global MenuItem
+export global Card
+export global CardGroup
+export global Image
+export global Badge
+export global Toolbar
+export global Table
+export global TableHeader
+export global TableRow
+export global TableCell
+export global TableCol
+export global TableDivider
+export global Tab
+export global TabItem
+export global Nav
+export global NavBar
+export global NavItem
+export global NavBarItem
+export global Breadcrumb
+export global BreadcrumbItem
 export global App
 export global Form
 export global BootstrapRenderer
@@ -31,9 +100,40 @@ export global Switch
 export global Range
 export global Select
 export global Radio
+export global Alert
+export global Progress
+export global Toast
+export global ToastStack
+export global Dialog
 export createTemplate(xml)
 export cloneTemplate(template)
 
+global InputGroup = InputGroupClass
+global Markdown = MarkdownClass
+global Accordion = AccordionClass
+global AccordionItem = AccordionItemClass
+global ListGroup = ListGroupClass
+global Menu = MenuClass
+global MenuItem = MenuItemClass
+global Card = CardClass
+global CardGroup = CardGroupClass
+global Image = ImageClass
+global Badge = BadgeClass
+global Toolbar = ToolbarClass
+global Table = TableClass
+global TableHeader = TableHeaderClass
+global TableRow = TableRowClass
+global TableCell = TableCellClass
+global TableCol = TableColClass
+global TableDivider = TableDividerClass
+global Tab = TabClass
+global TabItem = TabItemClass
+global Nav = NavClass
+global NavBar = NavBarClass
+global NavItem = NavItemClass
+global NavBarItem = NavBarItemClass
+global Breadcrumb = BreadcrumbClass
+global BreadcrumbItem = BreadcrumbItemClass
 global App = AppClass
 global Form = FormClass
 global BootstrapRenderer = RendererClass
@@ -46,6 +146,11 @@ global Switch = SwitchClass
 global Range = RangeClass
 global Select = SelectClass
 global Radio = RadioClass
+global Alert = AlertClass
+global Progress = ProgressClass
+global Toast = ToastClass
+global ToastStack = ToastStackClass
+global Dialog = DialogClass
 
 createTemplate(xml)
     return makeTemplate(xml)

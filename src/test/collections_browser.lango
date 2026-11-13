@@ -1,0 +1,547 @@
+import js global Object
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global requests = []
+
+reset()
+    global requests
+    requests = []
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/collections"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture body
+        capture req
+        capture res
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global requests
+    requests.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "collection-token")
+    switch req.url
+      case "/"
+          res.end("{}")
+      case "/collections"
+          res.end(to_json({
+              view: screen()
+          }))
+      case "/accordion/values"
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "status"
+                  caption: "Selections updated"
+              }, {
+                  type: "values"
+                  values: {
+                      choice: {
+                          id: 1
+                      }
+                      choices: ["y"]
+                  }
+              }]
+          }))
+      case "/accordion/invalid"
+          res.end(to_json({
+              cmds: [{
+                  type: "values"
+                  values: {
+                      choices: ["missing"]
+                  }
+              }]
+          }))
+      case "/broken"
+          res.end(to_json({
+              view: {
+                  type: "menu"
+                  label: "Broken menu"
+                  items: [{
+                      type: "menuItem"
+                      label: {
+                          type: "button"
+                          caption: "Nested action"
+                      }
+                  }]
+              }
+          }))
+      case "/replace"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Collections removed"
+              }
+          }))
+      else
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "status"
+                  caption: req.url
+              }]
+          }))
+    return null
+
+screen()
+    return {
+        type: "form"
+        controls: [accordion(false), accordion(true), {
+            type: "button"
+            name: "status"
+            caption: "Root status"
+        }, {
+            type: "button"
+            caption: "Save selections"
+            url: "/accordion/save"
+        }, {
+            type: "button"
+            caption: "Set selections"
+            url: "/accordion/values"
+        }, {
+            type: "button"
+            caption: "Invalid selection"
+            url: "/accordion/invalid"
+        }, {
+            type: "form"
+            name: "editor"
+            controls: [{
+                type: "input"
+                name: "title"
+                label: "Title"
+                value: "Initial title"
+            }, {
+                type: "menu"
+                name: "actions"
+                label: "Actions"
+                dark: true
+                items: [{
+                    type: "menuItem"
+                    variant: "header"
+                    label: "Document actions"
+                }, {
+                    type: "menuItem"
+                    label: "Files"
+                    subItems: [{
+                        type: "menuItem"
+                        name: "open"
+                        label: "Open document"
+                        description: "Use edited title"
+                        url: "/menu/open"
+                    }]
+                }, {
+                    type: "menuItem"
+                    variant: "divider"
+                }, {
+                    type: "menuItem"
+                    label: "Split"
+                    url: "/menu/split"
+                    subItems: [{
+                        type: "menuItem"
+                        label: "Nested split action"
+                        url: "/menu/nested"
+                    }]
+                }]
+            }, {
+                type: "button"
+                name: "status"
+                caption: "Editor status"
+            }]
+        }, {
+            type: "listGroup"
+            name: "list"
+            numbered: true
+            flush: true
+            activeIndex: 1
+            items: [{
+                type: "text"
+                text: "<b>First item</b>"
+            }, {
+                type: "form"
+                name: "listEditor"
+                controls: [{
+                    type: "input"
+                    name: "quantity"
+                    label: "List quantity"
+                    value: "Two"
+                }, {
+                    type: "button"
+                    name: "status"
+                    caption: "Save list"
+                    url: "/list/save"
+                }]
+            }]
+        }, {
+            type: "button"
+            caption: "Broken view"
+            url: "/broken"
+        }, {
+            type: "button"
+            caption: "Replace collections"
+            url: "/replace"
+        }]
+    }
+
+accordion(multi)
+    if multi
+        return {
+            type: "accordion"
+            name: "choices"
+            multi: true
+            small: true
+            gap: true
+            items: [{
+                type: "accordionItem"
+                name: "x"
+                summary: "Choice X"
+                value: "x"
+                opened: true
+                body: "X content"
+            }, {
+                type: "accordionItem"
+                name: "y"
+                summary: "Choice Y"
+                value: "y"
+                body: "Y content"
+            }]
+        }
+    return {
+        type: "accordion"
+        name: "choice"
+        url: "/accordion/toggle"
+        items: [{
+            type: "accordionItem"
+            name: "first"
+            opened: true
+            summary: "First section"
+            value: {
+                id: 1
+            }
+            body: {
+                type: "input"
+                name: "sectionText"
+                label: "Section text"
+                value: "Section initial"
+            }
+        }, {
+            type: "accordionItem"
+            name: "second"
+            summary: "Second section"
+            value: {
+                id: 2
+            }
+            body: "Second content"
+        }]
+    }
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+item(page, name)
+    return page.getByRole("menuitem", {
+        name: name
+        exact: true
+    })
+
+exercise(page)
+    return chain page.getByLabel("Title").fill("Edited title")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Actions"
+        }).press("ArrowDown")
+      then(ignored)
+        capture page
+        return item(page, "Files").getAttribute("aria-expanded")
+      then(value)
+        capture page
+        assert value == "false"
+        return item(page, "Files").press("ArrowRight")
+      then(ignored)
+        capture page
+        return item(page, "Open document").click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/menu/open"
+        }).waitFor()
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.title == "Edited title"
+        assert request.input.actions == null
+        assert !Object/hasOwn(request.input, "listEditor")
+        assert request.token == "Bearer collection-token"
+        return page.getByRole("button", {
+            name: "Actions"
+        }).getAttribute("aria-expanded")
+      then(value)
+        capture page
+        assert value == "false"
+        return split(page)
+      then(ignored)
+        capture page
+        return page.getByLabel("List quantity").fill("Three")
+      then(ignored)
+        capture page
+        return click(page, "Save list")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/list/save"
+        }).waitFor()
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.quantity == "Three"
+        assert !Object/hasOwn(request.input, "editor")
+        return page.locator("ol.list-group > li.active").getAttribute("aria-current")
+      then(value)
+        capture page
+        assert value == "true"
+        return click(page, "Broken view")
+      then(ignored)
+        capture page
+        return page.getByText("Menu labels and icons cannot contain interactive controls", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("Title").inputValue()
+      then(value)
+        capture page
+        assert value == "Edited title"
+        return accordionActions(page)
+      then(ignored)
+        capture page
+        return cleanup(page)
+
+split(page)
+    global requests
+    state = {
+        count: requests.length
+    }
+    return chain click(page, "Actions")
+      then(ignored)
+        capture page
+        return page.locator(".lango-submenu-toggle").click()
+      then(ignored)
+        capture page
+        return item(page, "Nested split action").waitFor()
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count
+        return item(page, "Nested split action").press("ArrowLeft")
+      then(ignored)
+        capture page
+        return item(page, "Split").first().press("Escape")
+      then(ignored)
+        capture page
+        return click(page, "Actions")
+      then(ignored)
+        capture page
+        return page.locator(".lango-menu-split > button").first().click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/menu/split"
+        }).waitFor()
+      then(ignored)
+        capture state
+        global requests
+        assert requests.length == state.count + 1
+
+accordionActions(page)
+    global requests
+    state = {
+        count: requests.length
+    }
+    return chain page.getByLabel("Section text").fill("Preserved text")
+      then(ignored)
+        capture page
+        return click(page, "Second section")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/accordion/toggle"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count + 1
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.choice.id == 2
+        assert request.input.first == null
+        assert request.input.second == null
+        assert request.input.sectionText == "Preserved text"
+        return page.getByRole("button", {
+            name: "First section"
+        }).getAttribute("aria-expanded")
+      then(value)
+        capture page
+        assert value == "false"
+        return click(page, "Choice Y")
+      then(ignored)
+        capture page
+        return click(page, "Save selections")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/accordion/save"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.choices.length == 2
+        assert request.input.choices[0] == "x"
+        assert request.input.choices[1] == "y"
+        return click(page, "Set selections")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Selections updated"
+        }).waitFor()
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count + 3
+        return page.getByLabel("Section text").inputValue()
+      then(value)
+        capture page
+        assert value == "Preserved text"
+        return page.getByRole("button", {
+            name: "First section"
+        }).press("End")
+      then(ignored)
+        capture page
+        return page.locator(":focus").textContent()
+      then(value)
+        capture page
+        assert value == "Second section"
+        return click(page, "Invalid selection")
+      then(ignored)
+        capture page
+        return page.getByText("Accordion value does not identify an item", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return click(page, "Save selections")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/accordion/save"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.choices.length == 1
+        assert request.input.choices[0] == "y"
+        assert request.input.choice.id == 1
+      then(ignored)
+        capture page
+        return click(page, "First section")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/accordion/toggle"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return click(page, "Choice Y")
+      then(ignored)
+        capture page
+        return click(page, "Save selections")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "/accordion/save"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.choice == null
+        assert request.input.choices.length == 0
+
+cleanup(page)
+    state = {}
+    return chain click(page, "Actions")
+      then(ignored)
+        capture page
+        return page.locator(".lango-menu-split > button").first().elementHandle()
+      then(handle)
+        capture state
+        capture page
+        Object/assign(state, {
+            handle: handle
+        })
+        return page.getByLabel("Title").click()
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Actions"
+        }).getAttribute("aria-expanded")
+      then(value)
+        capture page
+        assert value == "false"
+        return click(page, "Replace collections")
+      then(ignored)
+        capture page
+        return page.getByText("Collections removed").waitFor()
+      then(ignored)
+        capture state
+        global requests
+        Object/assign(state, {
+            count: requests.length
+        })
+        return state.handle.dispatchEvent("click")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        capture state
+        global requests
+        assert requests.length == state.count

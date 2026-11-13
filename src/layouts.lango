@@ -1,0 +1,137 @@
+import js global document
+import js global URL
+import js global RegExp
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+import "./content"
+    appendContent(form, element, content, renderer)
+
+export class Card(form, props, renderer) : Control
+
+Card(form, props, renderer)
+    super(form, props, cloneMarkup("card", <article class="card"></article>))
+    main = document/createElement("div")
+    main.className = "lango-card-main"
+    if props.theme != null
+        @element.classList.add("text-bg-${props.theme.toLowerCase()}")
+    if props.translucent == true
+        @element.style.setProperty("--bs-bg-opacity", ".85")
+    if props.horizontal == true
+        @element.classList.add("lango-card-horizontal")
+    if props.header != null
+        header = document/createElement("div")
+        header.className = "card-header"
+        appendContent(form, header, props.header, renderer)
+        main.appendChild(header)
+    body = document/createElement("div")
+    body.className = "card-body"
+    if props.title != null
+        title = document/createElement("h3")
+        title.className = "card-title h5"
+        appendContent(form, title, props.title, renderer)
+        body.appendChild(title)
+    if props.subTitle != null
+        subtitle = document/createElement("div")
+        subtitle.className = "card-subtitle mb-2"
+        appendContent(form, subtitle, props.subTitle, renderer)
+        body.appendChild(subtitle)
+    if props.text != null
+        text = document/createElement("p")
+        text.className = "card-text"
+        appendContent(form, text, props.text, renderer)
+        body.appendChild(text)
+    appendContent(form, body, props.body, renderer)
+    if props.buttons != null
+        buttons = document/createElement("div")
+        buttons.className = "d-flex flex-wrap gap-2 mt-2"
+        appendContent(form, buttons, props.buttons, renderer)
+        body.appendChild(buttons)
+    main.appendChild(body)
+    if props.footer != null
+        footer = document/createElement("div")
+        footer.className = "card-footer"
+        appendContent(form, footer, props.footer, renderer)
+        main.appendChild(footer)
+    @element.appendChild(main)
+    if props.imageLocation != null and props.imageLocation != "top" and props.imageLocation != "bottom"
+        throw "Card imageLocation must be top or bottom"
+    if props.image != null
+        image = document/createElement("div")
+        image.className = "lango-card-media"
+        if is_string(props.image)
+            image.appendChild(renderer.build(form, {
+                type: "image"
+                url: props.image
+                fluid: true
+            }))
+          else
+              appendContent(form, image, props.image, renderer)
+        if props.imageLocation == "bottom"
+            @element.appendChild(image)
+          else
+              @element.prepend(image)
+
+export class CardGroup(form, props, renderer) : Control
+
+CardGroup(form, props, renderer)
+    super(form, props, cloneMarkup("card-group", <div class="card-group"></div>))
+    if props.cards != null
+        for props.cards as card
+            if !is_object(card) or card.type != "card"
+                throw "CardGroup accepts Card definitions"
+            @element.appendChild(renderer.build(form, card))
+
+export class Image(form, props, renderer) : Control
+
+Image(form, props, renderer)
+    super(form, props, cloneMarkup("image", <figure class="figure"><img class="figure-img" /></figure>))
+    image = @element.firstElementChild
+    image.alt = ""
+    if props.aria != null and is_string(props.aria.label)
+        image.alt = props.aria.label
+      else
+          if is_string(props.caption)
+              image.alt = props.caption
+    if props.fluid == true
+        image.classList.add("img-fluid")
+    if props.url != null
+        if !is_string(props.url) or props.url.trim() == ""
+            throw "Image URL must be nonempty text"
+        target = new URL(props.url, document.baseURI)
+        if target.protocol != "http:" and target.protocol != "https:" and !props.url.toLowerCase().startsWith("data:image/")
+            throw "Unsupported image URL"
+        image.src = target.href
+      else
+          if props.content != null
+              mime = props.mimeType
+              if mime == null
+                  mime = "image/png"
+              allowed = new RegExp("^image/[A-Za-z0-9.+-]+$")
+              if !is_string(mime) or !allowed.test(mime) or !is_string(props.content)
+                  throw "Image content requires base64 text and an image MIME type"
+              image.src = "data:${mime};base64,${props.content}"
+    if props.caption != null
+        caption = document/createElement("figcaption")
+        caption.className = "figure-caption"
+        appendContent(form, caption, props.caption, renderer)
+        @element.appendChild(caption)
+
+export class Badge(form, props) : Control
+
+Badge(form, props)
+    super(form, props, cloneMarkup("badge", <span class="badge"></span>))
+    @element.textContent = props.text
+    theme = props.theme
+    if theme == null
+        theme = "secondary"
+    @element.classList.add("text-bg-${theme.toLowerCase()}")
+
+export class Toolbar(form, props, renderer) : Control
+
+Toolbar(form, props, renderer)
+    super(form, props, cloneMarkup("toolbar", <div class="btn-toolbar gap-2" role="toolbar"></div>))
+    if props.items != null
+        for props.items as item
+            @element.appendChild(renderer.build(form, item))

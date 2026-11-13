@@ -1,0 +1,271 @@
+import js global document
+import js global Number
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+import "./content"
+    appendContent(form, element, content, renderer)
+    bindAction(control, element, url)
+    decorate(control, props)
+
+export spanValue(value)
+
+spanValue(value)
+    if value == null
+        return 1
+    if !is_number(value) or !Number/isInteger(value) or value < 1 or value > 1000
+        throw "Table span must be an integer between 1 and 1000"
+    return value
+
+export class Table(form, props, renderer) : Control
+
+Table(form, props, renderer)
+    super(form, props, cloneMarkup("table", <div class="table-responsive"><table class="table"><colgroup></colgroup><tbody></tbody></table></div>))
+    table = @element.firstElementChild
+    group = table.firstElementChild
+    body = table.lastElementChild
+    columns = []
+    rows = []
+    dividers = []
+    width = 1
+    header = null
+    if props.stripedRows == true
+        table.classList.add("table-striped")
+    if props.stripedColumns == true
+        table.classList.add("table-striped-columns")
+    if props.hoverableRows == true
+        table.classList.add("table-hover")
+    if props.small == true
+        table.classList.add("table-sm")
+    if props.border != null and props.border != false
+        table.classList.add("table-bordered")
+        if is_object(props.border)
+            if props.border.color != null
+                table.style.setProperty("--bs-table-border-color", props.border.color)
+            if props.border.width != null
+                table.style.setProperty("--bs-border-width", "${props.border.width}px")
+    if props.caption != null
+        caption = document/createElement("caption")
+        appendContent(form, caption, props.caption, renderer)
+        table.prepend(caption)
+    if props.aria != null
+        for props.aria as name: value
+            table.setAttribute("aria-${name}", value)
+    if props.controls != null
+        for props.controls as definition
+            switch definition.type
+              case "tableCol"
+                  col = new TableCol(form, definition)
+                  form.register(definition.name, col)
+                  columns.add(col)
+                  group.appendChild(col.element)
+              case "tableHeader"
+                  if header != null
+                      throw "Table accepts one TableHeader"
+                  header = new TableHeader(form, definition, renderer)
+                  form.register(definition.name, header)
+                  table.insertBefore(header.element, body)
+                  for header.rows as heading
+                      rows.add(heading)
+              case "tableRow"
+                  row = new TableRow(form, definition, renderer, false)
+                  form.register(definition.name, row)
+                  rows.add(row)
+                  body.appendChild(row.element)
+              case "tableDivider"
+                  divider = new TableDivider(form, definition)
+                  form.register(definition.name, divider)
+                  dividers.add(divider)
+                  body.appendChild(divider.element)
+              else
+                  throw "Unsupported Table child: ${definition.type}"
+    for rows as row
+        if row.width > width
+            width = row.width
+    for dividers as divider
+        divider.element.firstElementChild.colSpan = width
+    if rows.length > 0
+        first = rows[0]
+        offset = 0
+        for columns as col
+            offset = offset + col.span
+            if col.resize
+                anchor = first.boundary(offset)
+                if anchor == null
+                    throw "Resizable column must end at a first-row cell boundary"
+                col.attach(anchor, table)
+
+export class TableHeader(form, props, renderer) : Control
+    properties
+        rows
+
+TableHeader(form, props, renderer)
+    super(form, props, cloneMarkup("table-header", <thead></thead>))
+    decorate(@this, props)
+    @rows = []
+    if props.controls != null
+        for props.controls as definition
+            if definition.type != "tableRow"
+                throw "TableHeader accepts TableRow definitions"
+            row = new TableRow(form, definition, renderer, true)
+            form.register(definition.name, row)
+            @rows.add(row)
+            @element.appendChild(row.element)
+
+export class TableRow(form, props, renderer, heading) : Control
+    properties
+        width
+    methods
+        boundary(column)
+
+TableRow(form, props, renderer, heading)
+    super(form, props, cloneMarkup("table-row", <tr></tr>))
+    decorate(@this, props)
+    @width = 0
+    @cells = []
+    if props.controls != null
+        for props.controls as definition
+            if definition.type != "tableCell"
+                throw "TableRow accepts TableCell definitions"
+            cell = new TableCell(form, definition, renderer, heading)
+            form.register(definition.name, cell)
+            @cells.add(cell)
+            @width = @width + cell.element.colSpan
+            @element.appendChild(cell.element)
+    bindAction(@this, @element, props.url)
+
+TableRow:boundary(column)
+    offset = 0
+    for @cells as cell
+        offset = offset + cell.element.colSpan
+        if offset == column
+            return cell.element
+    return null
+
+export class TableCell(form, props, renderer, heading) : Control
+
+TableCell(form, props, renderer, heading)
+    super(form, props, cellElement(heading))
+    @element.colSpan = spanValue(props.colSpan)
+    @element.rowSpan = spanValue(props.rowSpan)
+    if props.verticalAlignment != null
+        @element.style.verticalAlign = props.verticalAlignment
+    if props.horizontalAlignment != null
+        @element.style.textAlign = props.horizontalAlignment
+    appendContent(form, @element, props.controls, renderer)
+    if props.style != null
+        for props.style as name: value
+            @element.style.setProperty(name, value)
+    if props.aria != null
+        for props.aria as name: value
+            @element.setAttribute("aria-${name}", value)
+    bindAction(@this, @element, props.url)
+
+cellElement(heading)
+    if heading
+        return cloneMarkup("table-heading", <th scope="col"></th>)
+    return cloneMarkup("table-cell", <td></td>)
+
+export class TableDivider(form, props) : Control
+
+TableDivider(form, props)
+    super(form, props, cloneMarkup("table-divider", <tr class="lango-table-divider" aria-hidden="true"><td><hr /></td></tr>))
+    decorate(@this, props)
+
+export class TableCol(form, props) : Control
+    properties
+        span
+        resize
+    methods
+        attach(cell, table)
+        size(width)
+
+TableCol(form, props)
+    super(form, props, cloneMarkup("table-col", <col />))
+    decorate(@this, props)
+    @span = spanValue(props.colSpan)
+    @resize = props.resize == true
+    @element.span = @span
+    if props.width != null
+        if is_number(props.width)
+            @element.style.width = "${props.width}px"
+          else
+              @element.style.width = props.width
+
+TableCol:size(width)
+    if width < 24
+        width = 24
+    @element.style.width = "${width}px"
+    @handle.setAttribute("aria-valuenow", "${width}")
+    return null
+
+TableCol:attach(cell, table)
+    handle = document/createElement("button")
+    handle.type = "button"
+    handle.className = "lango-col-resize"
+    handle.setAttribute("role", "separator")
+    handle.setAttribute("aria-orientation", "vertical")
+    handle.setAttribute("aria-label", "↔")
+    handle.setAttribute("aria-valuemin", "24")
+    handle.setAttribute("aria-valuenow", "24")
+    @handle = handle
+    cell.classList.add("lango-resizable-cell")
+    cell.appendChild(handle)
+    drag = {
+        active: false
+        x: 0
+        width: 0
+    }
+    down = (event)
+        capture drag
+        capture handle
+        capture table
+        if event.button != 0 or drag.active
+            return null
+        event.preventDefault()
+        drag.active = true
+        drag.x = event.clientX
+        drag.width = @element.getBoundingClientRect().width / @span
+        style = table.style
+        style.tableLayout = "fixed"
+        handle.setPointerCapture(event.pointerId)
+    move = (event)
+        capture drag
+        if drag.active
+            size(drag.width + (event.clientX - drag.x) / @span)
+    up = (event)
+        capture drag
+        if drag.active
+            drag.active = false
+    key = (event)
+        capture table
+        if event.key != "ArrowLeft" and event.key != "ArrowRight"
+            return null
+        event.preventDefault()
+        style = table.style
+        style.tableLayout = "fixed"
+        step = 10
+        if event.key == "ArrowLeft"
+            step = -10
+        size(@element.getBoundingClientRect().width / @span + step)
+    handle.addEventListener("pointerdown", down)
+    handle.addEventListener("pointermove", move)
+    handle.addEventListener("lostpointercapture", up)
+    handle.addEventListener("pointerup", up)
+    handle.addEventListener("pointercancel", up)
+    handle.addEventListener("keydown", key)
+    release = ()
+        capture handle
+        capture down
+        capture move
+        capture up
+        capture key
+        handle.removeEventListener("pointerdown", down)
+        handle.removeEventListener("pointermove", move)
+        handle.removeEventListener("lostpointercapture", up)
+        handle.removeEventListener("pointerup", up)
+        handle.removeEventListener("pointercancel", up)
+        handle.removeEventListener("keydown", key)
+        handle.remove()
+    @release.add(release)

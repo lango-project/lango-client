@@ -1,0 +1,198 @@
+import js global document
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+    controlId()
+import "./content"
+    appendContent(form, element, content, renderer)
+    decorate(control, props)
+import "./fields"
+    sameValue(first, second)
+
+export class Accordion(form, props, renderer) : Control
+    properties
+        disabled
+    methods
+        toggle(item)
+        getValue()
+        setValue(value)
+        setDisabled(value)
+        move(item, key)
+
+Accordion(form, props, renderer)
+    super(form, props, cloneMarkup("accordion", <div class="accordion"></div>))
+    @items = []
+    @multi = props.multi == true
+    @disabled = false
+    @url = props.url
+    if @url != null
+        form.app.checkUrl(@url)
+    if props.small == true
+        @element.classList.add("lango-accordion-small")
+    if props.gap != null and props.gap != false
+        @element.classList.add("lango-accordion-gap")
+        gap = props.gap
+        if gap == true
+            gap = ".5rem"
+          else
+              if is_number(gap)
+                  gap = "${gap}px"
+        @element.style.gap = gap
+    opened = false
+    if props.items != null
+        for props.items as definition
+            if !is_object(definition) or definition.type != "accordionItem"
+                throw "Accordion accepts AccordionItem definitions"
+            if definition.opened == true and !@multi
+                if opened
+                    throw "Single Accordion accepts only one initially opened item"
+                opened = true
+            item = new AccordionItem(form, definition, renderer, @this)
+            form.register(definition.name, item)
+            @items.add(item)
+            @element.appendChild(item.element)
+
+Accordion:toggle(item)
+    if @disabled or item.button.disabled
+        return null
+    opened = !item.opened
+    if opened and !@multi
+        for @items as sibling
+            sibling.apply(false)
+    item.apply(opened)
+    if @url != null
+        return chain @form.send(@url)
+          catch(error)
+            @form.app.error(@form, error)
+    return null
+
+Accordion:getValue()
+    values = []
+    for @items as item
+        if item.opened
+            if !@multi
+                return item.value
+            values.add(item.value)
+    if @multi
+        return values
+    return null
+
+Accordion:setValue(value)
+    values = value
+    if !@multi
+        values = []
+        if value != null
+            values.add(value)
+      else
+          if !is_array(values)
+              throw "Multi Accordion value must be an array"
+    selected = []
+    for values as candidate
+        found = null
+        for @items as item
+            if sameValue(item.value, candidate)
+                found = item
+                break
+        if found == null
+            throw "Accordion value does not identify an item"
+        if !selected.includes(found)
+            selected.add(found)
+    for @items as item
+        item.apply(selected.includes(item))
+    return @this
+
+Accordion:setDisabled(value)
+    @disabled = value
+    for @items as item
+        item.syncDisabled()
+    return @this
+
+Accordion:move(item, key)
+    items = []
+    for @items as candidate
+        if !candidate.button.disabled
+            items.add(candidate)
+    if items.length == 0
+        return false
+    index = items.indexOf(item)
+    switch key
+      case "ArrowDown"
+          index = (index + 1) % items.length
+      case "ArrowUp"
+          index = (index + items.length - 1) % items.length
+      case "Home"
+          index = 0
+      case "End"
+          index = items.length - 1
+      else
+          return false
+    target = items[index]
+    target.button.focus()
+    return true
+
+export class AccordionItem(form, props, renderer, owner) : Control
+    properties
+        button
+        opened
+        value
+    methods
+        apply(opened)
+        setDisabled(value)
+        syncDisabled()
+        setCaption(value)
+
+AccordionItem(form, props, renderer, owner)
+    super(form, props, cloneMarkup("accordion-item", <div class="accordion-item"><h3 class="accordion-header"><button type="button" class="accordion-button"></button></h3><div class="accordion-collapse collapse"><div class="accordion-body"></div></div></div>))
+    @owner = owner
+    @disabled = false
+    @value = props.value
+    @button = @element.firstElementChild.firstElementChild
+    @panel = @element.lastElementChild
+    @button.id = controlId()
+    @panel.id = controlId()
+    @button.setAttribute("aria-controls", @panel.id)
+    @panel.setAttribute("aria-labelledby", @button.id)
+    @panel.setAttribute("role", "region")
+    appendContent(form, @button, props.summary, renderer)
+    if @button.querySelector("button, a, input, select, textarea, [contenteditable]") != null
+        throw "Accordion summary cannot contain interactive controls"
+    appendContent(form, @panel.firstElementChild, props.body, renderer)
+    if props.theme != null
+        @element.classList.add("text-bg-${props.theme.toLowerCase()}")
+    decorate(@this, props)
+    apply(props.opened == true)
+    click = ()
+        @owner.toggle(@this)
+    key = (event)
+        if @owner.move(@this, event.key)
+            event.preventDefault()
+    @button.addEventListener("click", click)
+    @button.addEventListener("keydown", key)
+    release = ()
+        capture click
+        capture key
+        @button.removeEventListener("click", click)
+        @button.removeEventListener("keydown", key)
+    @release.add(release)
+
+AccordionItem:apply(opened)
+    @opened = opened
+    @button.setAttribute("aria-expanded", "${opened}")
+    @button.classList.toggle("collapsed", !opened)
+    @panel.hidden = !opened
+    @panel.classList.toggle("show", opened)
+    return @this
+
+AccordionItem:setDisabled(value)
+    @disabled = value
+    syncDisabled()
+    return @this
+
+AccordionItem:syncDisabled()
+    @button.disabled = @disabled or @owner.disabled
+    return null
+
+AccordionItem:setCaption(value)
+    @button.textContent = value
+    return @this

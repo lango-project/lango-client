@@ -1,0 +1,144 @@
+import js global document
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+    controlId()
+import "./content"
+    appendContent(form, element, content, renderer)
+    decorate(control, props)
+
+export class Tab(form, props, renderer) : Control
+    methods
+        select(item, focus = false)
+        move(item, key)
+
+Tab(form, props, renderer)
+    super(form, props, cloneMarkup("tab", <div class="lango-tab"><div role="tablist"></div><div class="tab-content"></div></div>))
+    @items = []
+    @vertical = props.vertical == true
+    @nav = @element.firstElementChild
+    @panels = @element.lastElementChild
+    variant = props.variant
+    if variant == null
+        variant = "default"
+    switch variant
+      case "default"
+          @nav.className = "nav nav-tabs"
+      case "pills"
+          @nav.className = "nav nav-pills"
+      case "listGroup"
+          @nav.className = "list-group"
+      else
+          throw "Unknown Tab variant: ${variant}"
+    if @vertical
+        @element.classList.add("lango-tab-vertical")
+        @nav.classList.add("flex-column")
+        @nav.setAttribute("aria-orientation", "vertical")
+    if props.aria != null and props.aria.label != null
+        @nav.setAttribute("aria-label", props.aria.label)
+    if props.items != null
+        for props.items as definition
+            if !is_object(definition) or definition.type != "tabItem"
+                throw "Tab accepts TabItem definitions"
+            item = new TabItem(form, definition, renderer, @this, variant)
+            form.register(definition.name, item)
+            @items.add(item)
+            @nav.appendChild(item.button)
+            @panels.appendChild(item.element)
+    initial = null
+    if @items.length > 0
+        initial = @items[0]
+    if props.active != null
+        initial = null
+        for @items as candidate
+            if candidate.name == props.active
+                initial = candidate
+        if initial == null
+            throw "Unknown active TabItem: ${props.active}"
+    if initial != null
+        select(initial)
+
+Tab:select(item, focus = false)
+    for @items as candidate
+        active = candidate == item
+        candidate.element.hidden = !active
+        candidate.element.classList.toggle("active", active)
+        candidate.button.classList.toggle("active", active)
+        candidate.button.setAttribute("aria-selected", "${active}")
+        candidate.button.tabIndex = -1
+        if active
+            candidate.button.tabIndex = 0
+    if focus
+        item.button.focus()
+    return @this
+
+Tab:move(item, key)
+    index = @items.indexOf(item)
+    next = index
+    if key == "Home"
+        next = 0
+      else
+          if key == "End"
+              next = @items.length - 1
+            else
+                forward = "ArrowRight"
+                backward = "ArrowLeft"
+                if @vertical
+                    forward = "ArrowDown"
+                    backward = "ArrowUp"
+                if key == forward
+                    next = (index + 1) % @items.length
+                  else
+                      if key != backward
+                          return false
+                      next = (index + @items.length - 1) % @items.length
+    select(@items[next], true)
+    return true
+
+export class TabItem(form, props, renderer, owner, variant) : Control
+    properties
+        button
+        name
+    methods
+        activate()
+        setCaption(value)
+
+TabItem(form, props, renderer, owner, variant)
+    super(form, props, cloneMarkup("tab-panel", <div class="tab-pane" role="tabpanel" tabindex="0" hidden="hidden"></div>))
+    @owner = owner
+    @name = props.name
+    @button = document/createElement("button")
+    @button.type = "button"
+    @button.className = "nav-link"
+    if variant == "listGroup"
+        @button.className = "list-group-item list-group-item-action"
+    @button.setAttribute("role", "tab")
+    @button.id = controlId()
+    @element.id = controlId()
+    @button.setAttribute("aria-controls", @element.id)
+    @element.setAttribute("aria-labelledby", @button.id)
+    @button.textContent = props.label
+    decorate(@this, props)
+    appendContent(form, @element, props.content, renderer)
+    click = ()
+        activate()
+    key = (event)
+        if @owner.move(@this, event.key)
+            event.preventDefault()
+    @button.addEventListener("click", click)
+    @button.addEventListener("keydown", key)
+    release = ()
+        capture click
+        capture key
+        @button.removeEventListener("click", click)
+        @button.removeEventListener("keydown", key)
+    @release.add(release)
+
+TabItem:activate()
+    @owner.select(@this)
+    return @this
+
+TabItem:setCaption(value)
+    @button.textContent = value
+    return @this

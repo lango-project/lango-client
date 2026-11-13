@@ -1,0 +1,518 @@
+import js global Object
+import js global Number
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global requests = []
+
+reset()
+    global requests
+    requests = []
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/catalog"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture body
+        capture req
+        capture res
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global requests
+    requests.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "catalog-token")
+    switch req.url
+      case "/"
+          res.end("{}")
+      case "/catalog"
+          res.end(to_json({
+              view: screen()
+          }))
+      case "/activate"
+          res.end(to_json({
+              cmds: [{
+                  type: "activateTabItem"
+                  name: "details"
+              }, {
+                  type: "values"
+                  values: {
+                      "editor/note": "Server note"
+                  }
+              }]
+          }))
+      case "/location"
+          res.end(to_json({
+              cmds: [{
+                  type: "setUrl"
+                  url: "/administrator"
+              }, {
+                  type: "changeCaption"
+                  name: "location"
+                  caption: "Location changed"
+              }]
+          }))
+      case "/replace"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Catalog removed"
+              }
+          }))
+      else
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "status"
+                  caption: req.url
+              }]
+          }))
+    return null
+
+screen()
+    return {
+        type: "form"
+        controls: [{
+            type: "nav"
+            name: "navigation"
+            items: [{
+                type: "navItem"
+                name: "catalogLink"
+                url: "/catalog"
+                content: "Catalog"
+            }, {
+                type: "navItem"
+                name: "adminLink"
+                url: "/admin"
+                content: "Admin"
+            }, {
+                type: "navItem"
+                name: "administratorLink"
+                url: "/administrator"
+                content: "Administrator"
+            }]
+        }, {
+            type: "breadcrumb"
+            items: [{
+                type: "breadcrumbItem"
+                text: "Home"
+                url: "/"
+            }, {
+                type: "breadcrumbItem"
+                text: "Current catalog"
+            }]
+        }, {
+            type: "cardGroup"
+            cards: [{
+                type: "card"
+                title: "<b>Card title</b>"
+                subTitle: "Subtitle"
+                image: {
+                    type: "image"
+                    content: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                    mimeType: "image/gif"
+                    caption: "Preview"
+                    fluid: true
+                }
+                horizontal: true
+                header: {
+                    type: "badge"
+                    text: "New"
+                }
+                body: {
+                    type: "input"
+                    name: "title"
+                    label: "Card title field"
+                    value: "Original"
+                }
+                footer: "Card footer"
+            }]
+        }, {
+            type: "tab"
+            name: "tabs"
+            active: "summary"
+            variant: "pills"
+            items: [{
+                type: "tabItem"
+                name: "summary"
+                label: "Summary"
+                content: {
+                    type: "button"
+                    caption: "Activate details"
+                    url: "/activate"
+                }
+            }, {
+                type: "tabItem"
+                name: "details"
+                label: "Details"
+                content: {
+                    type: "form"
+                    name: "editor"
+                    controls: [{
+                        type: "input"
+                        name: "note"
+                        label: "Note"
+                        value: "Initial note"
+                    }, {
+                        type: "button"
+                        name: "status"
+                        caption: "Save note"
+                        url: "/note"
+                    }]
+                }
+            }]
+        }, table(), {
+            type: "toolbar"
+            items: [{
+                type: "button"
+                name: "status"
+                caption: "Status"
+            }, {
+                type: "button"
+                name: "location"
+                caption: "Change location"
+                url: "/location"
+            }, {
+                type: "button"
+                caption: "Replace catalog"
+                url: "/replace"
+            }]
+        }]
+    }
+
+table()
+    return {
+        type: "table"
+        caption: "Orders"
+        stripedRows: true
+        controls: [{
+            type: "tableCol"
+            resize: true
+            width: 180
+        }, {
+            type: "tableCol"
+            width: 200
+        }, {
+            type: "tableHeader"
+            controls: [{
+                type: "tableRow"
+                controls: [{
+                    type: "tableCell"
+                    controls: [{
+                        type: "text"
+                        text: "Order"
+                    }]
+                }, {
+                    type: "tableCell"
+                    controls: [{
+                        type: "text"
+                        text: "Action"
+                    }]
+                }]
+            }]
+        }, {
+            type: "tableRow"
+            url: "/row/1"
+            controls: [{
+                type: "tableCell"
+                rowSpan: 2
+                url: "/cell/1"
+                controls: [{
+                    type: "text"
+                    text: "Clickable cell"
+                }, {
+                    type: "button"
+                    caption: "Inner action"
+                    url: "/inner/1"
+                }]
+            }, {
+                type: "tableCell"
+                controls: [{
+                    type: "text"
+                    text: "Clickable row"
+                }]
+            }]
+        }, {
+            type: "tableRow"
+            controls: [{
+                type: "tableCell"
+                controls: [{
+                    type: "input"
+                    name: "quantity"
+                    label: "Quantity"
+                    value: 2
+                    dataType: "Number"
+                }]
+            }]
+        }, {
+            type: "tableDivider"
+        }]
+    }
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+status(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).waitFor()
+
+exercise(page)
+    return chain page.getByLabel("Card title field").fill("Edited card")
+      then(ignored)
+        capture page
+        return page.getByRole("img", {
+            name: "Preview"
+        }).getAttribute("src")
+      then(value)
+        capture page
+        assert value.startsWith("data:image/gif;base64,")
+        return page.locator("b").count()
+      then(count)
+        capture page
+        assert count == 0
+        return page.getByRole("link", {
+            name: "Catalog"
+            exact: true
+        }).getAttribute("aria-current")
+      then(value)
+        capture page
+        assert value == "page"
+        return click(page, "Activate details")
+      then(ignored)
+        capture page
+        return page.getByLabel("Note").waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("Note").inputValue()
+      then(value)
+        capture page
+        assert value == "Server note"
+        return page.getByLabel("Note").fill("Edited note")
+      then(ignored)
+        capture page
+        return click(page, "Save note")
+      then(ignored)
+        capture page
+        return status(page, "/note")
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.note == "Edited note"
+        assert !Object/hasOwn(request.input, "title")
+        return page.getByRole("tab", {
+            name: "Details"
+        }).press("Home")
+      then(ignored)
+        capture page
+        return page.getByRole("tab", {
+            name: "Summary"
+        }).getAttribute("aria-selected")
+      then(value)
+        capture page
+        assert value == "true"
+        return page.getByRole("tab", {
+            name: "Summary"
+        }).press("ArrowRight")
+      then(ignored)
+        capture page
+        return page.getByLabel("Note").inputValue()
+      then(value)
+        capture page
+        assert value == "Edited note"
+        return tableActions(page)
+      then(ignored)
+        capture page
+        return click(page, "Change location")
+      then(ignored)
+        capture page
+        return status(page, "Location changed")
+      then(ignored)
+        capture page
+        return page.getByRole("link", {
+            name: "Admin"
+            exact: true
+        }).getAttribute("aria-current")
+      then(value)
+        capture page
+        assert value == null
+        return page.getByRole("link", {
+            name: "Administrator"
+        }).getAttribute("aria-current")
+      then(value)
+        capture page
+        assert value == "page"
+        return cleanup(page)
+
+tableActions(page)
+    global requests
+    state = {
+        count: requests.length
+    }
+    return chain page.getByRole("button", {
+        name: "Inner action"
+    }).click()
+      then(ignored)
+        capture page
+        return status(page, "/inner/1")
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count + 1
+        index = requests.length - 1
+        request = requests[index]
+        assert request.input.title == "Edited card"
+        assert request.input.editor.note == "Edited note"
+        assert request.token == "Bearer catalog-token"
+        return page.getByText("Clickable cell", {
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return status(page, "/cell/1")
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count + 2
+        return page.getByRole("cell", {
+            name: "Clickable row"
+            exact: true
+        }).click()
+      then(ignored)
+        capture page
+        return status(page, "/row/1")
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count + 3
+        return page.getByRole("row", {
+            name: "Clickable cell Inner action Clickable row"
+        }).press("Enter")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        capture page
+        capture state
+        global requests
+        assert requests.length == state.count + 4
+        return page.locator("td[rowspan]").first().getAttribute("rowspan")
+      then(value)
+        capture page
+        assert value == "2"
+        return page.locator("col").first().getAttribute("style")
+      then(value)
+        capture page
+        capture state
+        Object/assign(state, {
+            width: value
+        })
+        return page.getByRole("separator").press("ArrowRight")
+      then(ignored)
+        capture page
+        return page.locator("col").first().getAttribute("style")
+      then(value)
+        capture state
+        global requests
+        assert value != state.width
+        assert requests.length == state.count + 4
+      then(ignored)
+        capture page
+        return resizeColumn(page)
+
+resizeColumn(page)
+    state = {}
+    return chain page.getByRole("separator").getAttribute("aria-valuenow")
+      then(value)
+        capture page
+        capture state
+        Object/assign(state, {
+            before: Number/parseFloat(value)
+        })
+        return page.getByRole("separator").boundingBox()
+      then(box)
+        capture state
+        capture page
+        Object/assign(state, {
+            x: box.x + box.width / 2
+            y: box.y + box.height / 2
+        })
+        return page.mouse.move(state.x, state.y)
+      then(ignored)
+        capture page
+        return page.mouse.down()
+      then(ignored)
+        capture page
+        capture state
+        return page.mouse.move(state.x + 40, state.y)
+      then(ignored)
+        capture page
+        return page.mouse.up()
+      then(ignored)
+        capture page
+        return page.getByRole("separator").getAttribute("aria-valuenow")
+      then(value)
+        capture state
+        assert Number/parseFloat(value) > state.before
+
+cleanup(page)
+    state = {}
+    return chain page.getByText("Clickable cell", {
+        exact: true
+    }).elementHandle()
+      then(handle)
+        capture state
+        capture page
+        Object/assign(state, {
+            handle: handle
+        })
+        return click(page, "Replace catalog")
+      then(ignored)
+        capture page
+        return page.getByText("Catalog removed", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture state
+        global requests
+        state.count = requests.length
+        return state.handle.dispatchEvent("click", {
+            bubbles: true
+        })
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        capture state
+        global requests
+        assert requests.length == state.count

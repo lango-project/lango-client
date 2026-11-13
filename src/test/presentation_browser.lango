@@ -1,0 +1,658 @@
+import js global Object
+import js global setTimeout
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global state = {}
+
+reset()
+    global state
+    state = {
+        requests: []
+        closed: 0
+        closedSecond: 0
+    }
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/presentations"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture body
+        capture req
+        capture res
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global state
+    state.requests.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "root-token")
+    if req.url == "/"
+        res.end("{}")
+        return null
+    if req.url == "/presentations"
+        res.end(to_json({
+            view: screen()
+        }))
+        return null
+    if req.url == "/dialog/close"
+        state.closed = state.closed + 1
+        finish = ()
+            capture res
+            res.setHeader("x-lango-token", "closed-token")
+            res.end("{}")
+        setTimeout(finish, 150)
+        return null
+    if req.url == "/dialog/close-second"
+        state.closedSecond = state.closedSecond + 1
+    if req.url == "/toast/action"
+        res.setHeader("x-lango-token", "toast-token")
+    if req.url == "/action/Dialog"
+        res.setHeader("x-lango-token", "root-dialog-token")
+    if req.url == "/dialog/next"
+        res.setHeader("x-lango-token", "first-dialog-token")
+    if req.url == "/dialog/swap"
+        res.setHeader("x-lango-token", "second-dialog-token")
+    if req.url == "/dialog/save"
+        res.setHeader("x-lango-token", "first-saved-token")
+    if req.url == "/dialog/broken"
+        res.setHeader("x-lango-token", "first-after-error-token")
+    res.end(to_json(response(req.url)))
+    return null
+
+screen()
+    controls = [{
+        type: "value"
+        name: "rootId"
+        value: "root-data"
+    }, {
+        type: "input"
+        name: "email"
+        label: "Email"
+        value: "root@example.test"
+    }, {
+        type: "progress"
+        name: "work"
+        value: 0
+        aria: {
+            label: "Work"
+        }
+    }, {
+        type: "form"
+        name: "section"
+        controls: [{
+            type: "input"
+            name: "field"
+            label: "Child field"
+        }]
+    }, {
+        type: "toastStack"
+        name: "notifications"
+        toasts: []
+    }]
+    for ["Alert", "Replace alert", "Move alert", "Invalid alert", "Dismiss alert", "Child alert", "Reset child", "Transient toast", "Persistent toast", "Dialog", "Timed dialog", "Progress", "Indeterminate", "Invalid progress"] as name
+        controls.add({
+            type: "button"
+            caption: name
+            url: "/action/${name}"
+        })
+    return {
+        type: "form"
+        controls: controls
+    }
+
+response(url)
+    switch url
+      case "/action/Alert"
+          return commands([{
+              type: "showAlert"
+              name: "notice"
+              message: "<b>Careful</b>"
+              theme: "Warning"
+              place: {
+                  name: "email"
+                  position: "before"
+              }
+          }])
+      case "/action/Replace%20alert"
+          return commands([{
+              type: "showAlert"
+              name: "notice"
+              message: "Changed warning"
+              place: {
+                  name: "email"
+                  position: "after"
+              }
+          }])
+      case "/action/Invalid%20alert"
+          return commands([{
+              type: "showAlert"
+              name: "notice"
+              message: {}
+          }])
+      case "/action/Move%20alert"
+          return commands([{
+              type: "showAlert"
+              name: "notice"
+              message: "Changed warning"
+              place: {
+                  name: "notice"
+                  position: "before"
+              }
+          }, {
+              type: "updateProgress"
+              name: "work"
+              value: 0
+              label: "Alert moved"
+          }])
+      case "/action/Dismiss%20alert"
+          return commands([{
+              type: "dismissAlert"
+              name: "notice"
+          }, {
+              type: "dismissAlert"
+              name: "notice"
+          }])
+      case "/action/Child%20alert"
+          return commands([{
+              type: "showAlert"
+              name: "childNotice"
+              message: "Child notice"
+              place: {
+                  name: "section/field"
+                  position: "inside"
+              }
+          }])
+      case "/action/Reset%20child"
+          return commands([{
+              type: "set"
+              name: "section"
+              control: {
+                  type: "input"
+                  name: "field"
+                  label: "New child field"
+              }
+          }])
+      case "/action/Transient%20toast"
+          return commands([{
+              type: "showToast"
+              toast: {
+                  type: "toast"
+                  name: "ephemeral"
+                  body: "Temporary notice"
+                  instant: true
+                  position: "top-center"
+              }
+          }])
+      case "/action/Persistent%20toast"
+          return commands([{
+              type: "showToast"
+              stack: "notifications"
+              toast: {
+                  type: "toast"
+                  name: "persistent"
+                  header: "Saved notice"
+                  body: {
+                      type: "form"
+                      name: "toastEditor"
+                      inheritedNames: ["rootId"]
+                      controls: [{
+                          type: "input"
+                          name: "text"
+                          label: "Toast text"
+                          value: "initial"
+                      }, {
+                          type: "button"
+                          caption: "Toast action"
+                          url: "/toast/action"
+                      }, {
+                          type: "button"
+                          caption: "Close toast"
+                          dismiss: true
+                      }]
+                  }
+              }
+          }, {
+              type: "values"
+              values: {
+                  "notifications/persistent/toastEditor/text": "server toast"
+              }
+          }])
+      case "/action/Progress"
+          return commands([{
+              type: "setProgress"
+              name: "work"
+              min: 10
+              max: 30
+              value: 15
+          }, {
+              type: "updateProgress"
+              name: "work"
+              value: 20
+              label: "Halfway"
+          }])
+      case "/action/Indeterminate"
+          return commands([{
+              type: "updateProgress"
+              name: "work"
+              value: null
+              label: "Working"
+          }])
+      case "/action/Invalid%20progress"
+          return commands([{
+              type: "setProgress"
+              name: "work"
+              min: 4
+              max: 4
+              value: 4
+          }])
+      case "/action/Dialog"
+          return commands([{
+              type: "showDialog"
+              dialog: modal(false)
+          }, {
+              type: "values"
+              values: {
+                  "editor/name": "Server dialog"
+              }
+          }, {
+              type: "setTimer"
+              url: "/owner/noop"
+              interval: 100
+          }])
+      case "/action/Timed%20dialog"
+          return commands([{
+              type: "showDialog"
+              dialog: modal(false)
+          }, {
+              type: "setTimer"
+              url: "/owner/reset"
+              interval: 250
+          }])
+      case "/dialog/next"
+          return commands([{
+              type: "invalid"
+              name: "name"
+              message: "Retained validation"
+          }, {
+              type: "showDialog"
+              dialog: modal(true)
+              keepPrev: true
+          }])
+      case "/dialog/swap"
+          return commands([{
+              type: "swapDialog"
+          }])
+      case "/dialog/save"
+          return commands([{
+              type: "changeCaption"
+              name: "save"
+              caption: "Saved dialog"
+          }])
+      case "/dialog/broken"
+          return commands([{
+              type: "showDialog"
+              dialog: {
+                  type: "dialog"
+                  title: "Broken dialog"
+                  body: {
+                      type: "unsupported"
+                  }
+              }
+          }])
+      case "/dialog/programmatic"
+          return commands([{
+              type: "showDialog"
+              dialog: null
+          }])
+      case "/owner/reset"
+          return {
+              view: {
+                  type: "text"
+                  text: "Owner reset"
+              }
+          }
+    return {}
+
+modal(second)
+    title = "First dialog"
+    value = "Alice"
+    close = "/dialog/close"
+    if second
+        title = "Second dialog"
+        value = "Second"
+        close = "/dialog/close-second"
+    return {
+        type: "dialog"
+        title: title
+        closeUrl: close
+        body: {
+            type: "form"
+            name: "editor"
+            inheritedNames: ["rootId"]
+            controls: [{
+                type: "input"
+                name: "name"
+                label: "Dialog name"
+                value: value
+            }, {
+                type: "button"
+                caption: "Next dialog"
+                url: "/dialog/next"
+            }, {
+                type: "button"
+                caption: "Swap"
+                url: "/dialog/swap"
+            }, {
+                type: "button"
+                caption: "Broken dialog"
+                url: "/dialog/broken"
+            }]
+        }
+        footer: {
+            type: "container"
+            controls: [{
+                type: "button"
+                name: "save"
+                caption: "Save dialog"
+                url: "/dialog/save"
+            }, {
+                type: "button"
+                caption: "Programmatic close"
+                url: "/dialog/programmatic"
+            }]
+        }
+    }
+
+commands(values)
+    return {
+        cmds: values
+    }
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+text(page, value)
+    return page.getByText(value, {
+        exact: true
+    }).waitFor()
+
+exercise(page)
+    return chain click(page, "Alert")
+      then(ignored)
+        capture page
+        return text(page, "<b>Careful</b>")
+      then(ignored)
+        capture page
+        return page.locator("b").count()
+      then(count)
+        capture page
+        assert count == 0
+        return click(page, "Replace alert")
+      then(ignored)
+        capture page
+        return text(page, "Changed warning")
+      then(ignored)
+        capture page
+        return click(page, "Move alert")
+      then(ignored)
+        capture page
+        return text(page, "Alert moved")
+      then(ignored)
+        capture page
+        return text(page, "Changed warning")
+      then(ignored)
+        capture page
+        return click(page, "Invalid alert")
+      then(ignored)
+        capture page
+        return text(page, "Alert message must be text")
+      then(ignored)
+        capture page
+        return text(page, "Changed warning")
+      then(ignored)
+        capture page
+        return click(page, "Dismiss alert")
+      then(ignored)
+        capture page
+        return page.getByText("Changed warning", {
+            exact: true
+        }).waitFor({
+            state: "hidden"
+        })
+      then(ignored)
+        capture page
+        return click(page, "Child alert")
+      then(ignored)
+        capture page
+        return text(page, "Child notice")
+      then(ignored)
+        capture page
+        return click(page, "Reset child")
+      then(ignored)
+        capture page
+        return page.getByLabel("New child field").waitFor()
+      then(ignored)
+        capture page
+        return page.getByText("Child notice").count()
+      then(count)
+        capture page
+        assert count == 0
+        return progress(page)
+      then(ignored)
+        capture page
+        return toasts(page)
+      then(ignored)
+        capture page
+        return dialogs(page)
+
+progress(page)
+    return chain click(page, "Progress")
+      then(ignored)
+        capture page
+        return text(page, "Halfway")
+      then(ignored)
+        capture page
+        return page.getByRole("progressbar").getAttribute("aria-valuenow")
+      then(value)
+        capture page
+        assert value == "20"
+        return click(page, "Indeterminate")
+      then(ignored)
+        capture page
+        return text(page, "Working")
+      then(ignored)
+        capture page
+        return page.getByRole("progressbar").getAttribute("aria-valuenow")
+      then(value)
+        capture page
+        assert value == null
+        return click(page, "Invalid progress")
+      then(ignored)
+        capture page
+        return text(page, "Progress requires a numeric range with max greater than min")
+      then(ignored)
+        capture page
+        return page.getByRole("progressbar").getAttribute("aria-valuemax")
+      then(value)
+        assert value == "30"
+
+toasts(page)
+    return chain click(page, "Transient toast")
+      then(ignored)
+        capture page
+        return text(page, "Temporary notice")
+      then(ignored)
+        capture page
+        return page.getByText("Temporary notice").waitFor({
+            state: "hidden"
+            timeout: 7000
+        })
+      then(ignored)
+        capture page
+        return click(page, "Persistent toast")
+      then(ignored)
+        capture page
+        return page.getByLabel("Toast text").waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("Toast text").inputValue()
+      then(value)
+        capture page
+        assert value == "server toast"
+        return click(page, "Toast action")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        global state
+        index = state.requests.length - 1
+        request = state.requests[index]
+        assert request.url == "/toast/action"
+        assert request.input.text == "server toast"
+        assert request.input.rootId == "root-data"
+        assert !Object/hasOwn(request.input, "email")
+      then(ignored)
+        capture page
+        return click(page, "Close toast")
+      then(ignored)
+        capture page
+        return page.getByLabel("Toast text").waitFor({
+            state: "hidden"
+        })
+
+dialogs(page)
+    return chain click(page, "Dialog")
+      then(ignored)
+        capture page
+        return page.getByRole("dialog", {
+            name: "First dialog"
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.locator("dialog[open]").getByLabel("Dialog name").inputValue()
+      then(value)
+        capture page
+        assert value == "Server dialog"
+        return page.locator("dialog[open]").getByLabel("Dialog name").fill("Edited")
+      then(ignored)
+        capture page
+        return click(page, "Next dialog")
+      then(ignored)
+        capture page
+        return page.getByRole("dialog", {
+            name: "Second dialog"
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.waitForTimeout(250)
+      then(ignored)
+        capture page
+        return click(page, "Swap")
+      then(ignored)
+        capture page
+        return page.getByRole("dialog", {
+            name: "First dialog"
+        }).waitFor()
+      then(ignored)
+        capture page
+        return text(page, "Retained validation")
+      then(ignored)
+        capture page
+        return page.locator("dialog[open] :focus").textContent()
+      then(value)
+        assert value == "Next dialog"
+      then(ignored)
+        capture page
+        return page.locator("dialog[open]").getByLabel("Dialog name").inputValue()
+      then(value)
+        capture page
+        global state
+        assert value == "Edited"
+        index = state.requests.length - 1
+        swapped = state.requests[index]
+        assert swapped.url == "/dialog/swap"
+        assert swapped.token == "Bearer first-dialog-token"
+        return click(page, "Broken dialog")
+      then(ignored)
+        capture page
+        return text(page, "Unsupported control type: unsupported")
+      then(ignored)
+        capture page
+        return page.locator("dialog[open]").getByLabel("Dialog name").inputValue()
+      then(value)
+        capture page
+        assert value == "Edited"
+        return click(page, "Save dialog")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Saved dialog"
+        }).waitFor()
+      then(ignored)
+        global state
+        index = state.requests.length - 1
+        request = state.requests[index]
+        assert request.url == "/dialog/save"
+        assert request.input.name == "Edited"
+        assert request.input.rootId == "root-data"
+        assert request.token == "Bearer first-after-error-token"
+      then(ignored)
+        capture page
+        return page.keyboard.press("Escape")
+      then(ignored)
+        capture page
+        return page.keyboard.press("Escape")
+      then(ignored)
+        capture page
+        return page.getByRole("dialog", {
+            name: "Second dialog"
+        }).waitFor()
+      then(ignored)
+        capture page
+        global state
+        assert state.closed == 1
+        return click(page, "Programmatic close")
+      then(ignored)
+        capture page
+        return page.getByRole("dialog").waitFor({
+            state: "hidden"
+        })
+      then(ignored)
+        capture page
+        global state
+        assert state.closedSecond == 0
+        return click(page, "Timed dialog")
+      then(ignored)
+        capture page
+        return text(page, "Owner reset")
+      then(ignored)
+        capture page
+        return page.locator("dialog").count()
+      then(count)
+        global state
+        assert count == 0
+        assert state.closed == 1

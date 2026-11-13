@@ -16,17 +16,55 @@ import "./fields"
     class Radio
 import "./form"
     class Form
+import "./widgets"
+    class Alert
+    class Progress
+import "./presentations"
+    class Presentations
+    class Toast
+    class ToastStack
+import "./layouts"
+    class Card
+    class CardGroup
+    class Image
+    class Badge
+    class Toolbar
+import "./tabs"
+    class Tab
+import "./tables"
+    class Table
+import "./navigation"
+    class Nav
+    class NavBar
+    class Breadcrumb
+
+import "./collections"
+    class ListGroup
+import "./menus"
+    class Menu
+import "./accordion"
+    class Accordion
+import "./input_group"
+    class InputGroup
+import "./markdown"
+    class Markdown
 
 export class BootstrapRenderer()
+    properties
+        presentations
+        navigation
     methods
         registerControlType(name, factory)
         build(form, props)
         show(form, view)
         waiting(form, active)
         reportError(form, error)
+        locationChanged(url)
 
 BootstrapRenderer()
     @factories = Object/create(null)
+    @navigation = []
+    @presentations = new Presentations(@this)
     @templates = Object/create(null)
     @templates.button = createTemplate(<button type="button" class="btn"></button>)
     @templates.text = createTemplate(<span></span>)
@@ -39,6 +77,25 @@ BootstrapRenderer()
         range: Range
         select: Select
         radio: Radio
+        alert: Alert
+        progress: Progress
+        badge: Badge
+        markdown: Markdown
+    }
+    @layouts = {
+        card: Card
+        cardGroup: CardGroup
+        image: Image
+        toolbar: Toolbar
+        tab: Tab
+        table: Table
+        nav: Nav
+        navBar: NavBar
+        breadcrumb: Breadcrumb
+        listGroup: ListGroup
+        menu: Menu
+        accordion: Accordion
+        inputGroup: InputGroup
     }
 
 BootstrapRenderer:registerControlType(name, factory)
@@ -64,13 +121,30 @@ BootstrapRenderer:build(form, props)
         custom = @factories[props.type](form, props)
         form.register(props.name, custom)
         return custom.element
-    if props.type in @fields
-        ctor = @fields[props.type]
-        field = Reflect/construct(ctor, [form, props])
+    if props.type == "toast"
+        toast = new Toast(form, props, @this)
+        form.register(props.name, toast)
+        return toast.element
+    if props.type == "toastStack"
+        stack = new ToastStack(form, props, @this)
+        form.register(props.name, stack)
+        return stack.element
+    if props.type in @fields or props.type in @layouts
+        ctor = null
+        field = null
+        if props.type in @layouts
+            ctor = @layouts[props.type]
+            field = Reflect/construct(ctor, [form, props, @this])
+          else
+              ctor = @fields[props.type]
+              field = Reflect/construct(ctor, [form, props])
         form.register(props.name, field)
         if props.style != null
             for props.style as name: value
                 field.element.style.setProperty(name, value)
+        if props.aria != null
+            for props.aria as name: value
+                field.element.setAttribute("aria-${name}", value)
         return field.element
     kind = props.type
     if kind == "row" or kind == "col"
@@ -100,11 +174,19 @@ BootstrapRenderer:build(form, props)
           element.classList.add("btn-${theme.toLowerCase()}")
           element.textContent = props.caption
           element.disabled = props.disabled == true
-          if props.url != null
+          if props.url != null or props.dismiss == true
               listener = ()
                   capture form
                   capture props
+                  if props.url == null
+                      @presentations.dismiss(form)
+                      return null
                   chain form.send(props.url)
+                    then(ignored)
+                      capture props
+                      capture form
+                      if props.dismiss == true
+                          @presentations.dismiss(form)
                     catch(error)
                       capture form
                       form.app.error(form, error)
@@ -141,7 +223,7 @@ BootstrapRenderer:show(form, view)
               content.appendChild(build(form, view))
         form.element.replaceChildren(content)
     catch error
-        for form.owned as control
+        for form.owned.slice() as control
             control.dispose()
         form.controls = previous
         form.owned = owned
@@ -164,4 +246,9 @@ BootstrapRenderer:reportError(form, error)
     element.setAttribute("role", "alert")
     element.textContent = "${error}"
     form.element.appendChild(element)
+    return null
+
+BootstrapRenderer:locationChanged(url)
+    for @navigation as group
+        group.locationChanged(url)
     return null

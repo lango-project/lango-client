@@ -1,0 +1,336 @@
+import js global document
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+    controlId()
+import "./content"
+    appendContent(form, element, content, renderer)
+    decorate(control, props)
+
+export class Menu(form, props, renderer) : Control
+    properties
+        button
+        panel
+        items
+    methods
+        open(focus = false)
+        close(focus = false)
+        setDisabled(value)
+        setCaption(value)
+
+Menu(form, props, renderer)
+    super(form, props, cloneMarkup("menu", <div class="dropdown lango-menu"><button type="button" class="btn dropdown-toggle" aria-haspopup="menu" aria-expanded="false"></button><ul class="dropdown-menu" role="menu" hidden="hidden"></ul></div>))
+    @button = @element.firstElementChild
+    @panel = @element.lastElementChild
+    @panel.id = controlId()
+    @button.setAttribute("aria-controls", @panel.id)
+    @button.id = controlId()
+    @panel.setAttribute("aria-labelledby", @button.id)
+    @button.textContent = props.label
+    theme = props.theme
+    if theme == null
+        theme = "secondary"
+    @button.classList.add("btn-${theme.toLowerCase()}")
+    if props.dark == true
+        @panel.setAttribute("data-bs-theme", "dark")
+    if props.translucent == true
+        @panel.style.setProperty("--bs-dropdown-bg", "rgba(var(--bs-body-bg-rgb), .85)")
+    @items = buildItems(form, props.items, renderer, @this, null, @panel)
+    toggle = ()
+        if @panel.hidden
+            open()
+          else
+              close()
+    key = (event)
+        switch event.key
+          case "ArrowDown"
+              event.preventDefault()
+              open(true)
+          case "ArrowUp"
+              event.preventDefault()
+              open()
+              focusItem(@items, -1)
+          case "Escape"
+              event.preventDefault()
+              close(true)
+    outside = (event)
+        if !@panel.hidden and !@element.contains(event.target)
+            close()
+    listen(@this, @button, "click", toggle)
+    listen(@this, @button, "keydown", key)
+    listen(@this, document, "pointerdown", outside)
+    listen(@this, document, "focusin", outside)
+
+Menu:open(focus = false)
+    @panel.hidden = false
+    @panel.classList.add("show")
+    @button.setAttribute("aria-expanded", "true")
+    if focus
+        focusItem(@items, 0)
+    return @this
+
+Menu:close(focus = false)
+    for @items as item
+        item.close()
+    @panel.hidden = true
+    @panel.classList.remove("show")
+    @button.setAttribute("aria-expanded", "false")
+    if focus
+        @button.focus()
+    return @this
+
+Menu:setDisabled(value)
+    @button.disabled = value
+    if value
+        close()
+    return @this
+
+Menu:setCaption(value)
+    @button.textContent = value
+    return @this
+
+export class MenuItem(form, props, renderer, menu, parent) : Control
+    properties
+        button
+        panel
+        items
+    methods
+        open()
+        close()
+        activate()
+        key(event)
+        setDisabled(value)
+        setCaption(value)
+        toggleButton()
+
+MenuItem(form, props, renderer, menu, parent)
+    super(form, props, cloneMarkup("menu-item", <li role="none"></li>))
+    @menu = menu
+    @parent = parent
+    @url = props.url
+    if @url != null
+        form.app.checkUrl(@url)
+    @items = []
+    @button = null
+    @panel = null
+    @toggle = null
+    @caption = null
+    decorate(@this, props)
+    variant = props.variant
+    switch variant
+      case "header"
+          header = document/createElement("div")
+          header.className = "dropdown-header"
+          @caption = header
+          appendContent(form, header, props.label, renderer)
+          @element.appendChild(header)
+      case "divider"
+          @element.appendChild(cloneMarkup("menu-divider", <hr class="dropdown-divider" />))
+      case null
+          buildAction(form, props, renderer)
+      else
+          throw "Unknown MenuItem variant: ${variant}"
+    if variant != null and props.subItems != null and props.subItems.length > 0
+        throw "Menu header and divider cannot contain subItems"
+
+MenuItem:buildAction(form, props, renderer)
+    button = document/createElement("button")
+    button.type = "button"
+    button.className = "dropdown-item"
+    button.setAttribute("role", "menuitem")
+    @button = button
+    if props.theme != null
+        button.classList.add("text-${props.theme.toLowerCase()}")
+    if props.icon != null
+        icon = document/createElement("span")
+        icon.className = "lango-menu-icon"
+        icon.setAttribute("aria-hidden", "true")
+        if is_string(props.icon)
+            symbol = document/createElement("i")
+            symbol.className = props.icon
+            icon.appendChild(symbol)
+          else
+              appendContent(form, icon, props.icon, renderer)
+        button.appendChild(icon)
+    caption = document/createElement("span")
+    appendContent(form, caption, props.label, renderer)
+    button.appendChild(caption)
+    @caption = caption
+    button.setAttribute("aria-label", caption.textContent)
+    if props.description != null
+        description = document/createElement("small")
+        description.id = controlId()
+        description.className = "d-block text-body-secondary"
+        appendContent(form, description, props.description, renderer)
+        button.appendChild(description)
+        button.setAttribute("aria-describedby", description.id)
+    @element.appendChild(button)
+    if button.querySelector("button, a, input, select, textarea, [contenteditable]") != null
+        throw "Menu labels and icons cannot contain interactive controls"
+    action = ()
+        activate()
+    handler = (event)
+        key(event)
+    listen(@this, button, "click", action)
+    listen(@this, button, "keydown", handler)
+    if props.subItems != null and props.subItems.length > 0
+        branch(form, props, renderer)
+
+
+MenuItem:branch(form, props, renderer)
+    @element.classList.add("lango-submenu")
+    @panel = cloneMarkup("submenu", <ul class="dropdown-menu" role="menu" hidden="hidden"></ul>)
+    @panel.id = controlId()
+    @toggle = @button
+    if @url != null
+        @element.classList.add("lango-menu-split")
+        @toggle = document/createElement("button")
+        @toggle.type = "button"
+        @toggle.className = "dropdown-item lango-submenu-toggle"
+        @toggle.setAttribute("role", "menuitem")
+        @toggle.textContent = "▸"
+        @toggle.setAttribute("aria-label", @button.textContent)
+        @element.appendChild(@toggle)
+        toggle = ()
+            open()
+        handler = (event)
+            key(event)
+        listen(@this, @toggle, "click", toggle)
+        listen(@this, @toggle, "keydown", handler)
+    @toggle.id = controlId()
+    @toggle.setAttribute("aria-haspopup", "menu")
+    @toggle.setAttribute("aria-expanded", "false")
+    @toggle.setAttribute("aria-controls", @panel.id)
+    @panel.setAttribute("aria-labelledby", @toggle.id)
+    @element.appendChild(@panel)
+    @items = buildItems(form, props.subItems, renderer, @menu, @this, @panel)
+
+MenuItem:open()
+    if @panel == null
+        return @this
+    siblings = @menu.items
+    if @parent != null
+        siblings = @parent.items
+    for siblings as item
+        if item != @this
+            item.close()
+    @panel.hidden = false
+    @panel.classList.add("show")
+    @toggle.setAttribute("aria-expanded", "true")
+    focusItem(@items, 0)
+    return @this
+
+MenuItem:close()
+    for @items as item
+        item.close()
+    if @panel != null
+        @panel.hidden = true
+        @panel.classList.remove("show")
+        @toggle.setAttribute("aria-expanded", "false")
+    return @this
+
+MenuItem:activate()
+    if @url == null
+        return open()
+    @menu.close(true)
+    return chain @form.send(@url)
+      catch(error)
+        @form.app.error(@form, error)
+
+MenuItem:key(event)
+    if event.key == "Escape"
+        event.preventDefault()
+        event.stopPropagation()
+        @menu.close(true)
+        return null
+    if event.key == "ArrowRight" and @panel != null
+        event.preventDefault()
+        open()
+        return null
+    if event.key == "ArrowLeft" and @parent != null
+        event.preventDefault()
+        @parent.close()
+        @parent.button.focus()
+        return null
+    siblings = @menu.items
+    if @parent != null
+        siblings = @parent.items
+    buttons = []
+    for siblings as item
+        if item.button != null and !item.button.disabled
+            buttons.add(item.button)
+            if item.toggleButton() != null and item.toggleButton() != item.button
+                buttons.add(item.toggleButton())
+    if buttons.length == 0
+        return null
+    index = buttons.indexOf(event.currentTarget)
+    switch event.key
+      case "ArrowDown"
+          index = (index + 1) % buttons.length
+      case "ArrowUp"
+          index = (index + buttons.length - 1) % buttons.length
+      case "Home"
+          index = 0
+      case "End"
+          index = buttons.length - 1
+      else
+          return null
+    event.preventDefault()
+    buttons[index].focus()
+    return null
+
+MenuItem:toggleButton()
+    return @toggle
+
+MenuItem:setDisabled(value)
+    if @button != null
+        @button.disabled = value
+    if @toggle != null
+        @toggle.disabled = value
+    if value
+        close()
+    return @this
+
+MenuItem:setCaption(value)
+    if @caption != null
+        @caption.textContent = value
+    if @button != null
+        @button.setAttribute("aria-label", value)
+    if @toggle != null and @toggle != @button
+        @toggle.setAttribute("aria-label", value)
+    return @this
+
+buildItems(form, definitions, renderer, menu, parent, panel)
+    items = []
+    if definitions != null
+        for definitions as definition
+            if !is_object(definition) or definition.type != "menuItem"
+                throw "Menu accepts MenuItem definitions"
+            item = new MenuItem(form, definition, renderer, menu, parent)
+            form.register(definition.name, item)
+            items.add(item)
+            panel.appendChild(item.element)
+    return items
+
+focusItem(items, index)
+    buttons = []
+    for items as item
+        if item.button != null and !item.button.disabled
+            buttons.add(item.button)
+    if buttons.length > 0
+        if index == -1
+            index = buttons.length - 1
+        buttons[index].focus()
+    return null
+
+listen(control, element, type, action)
+    element.addEventListener(type, action)
+    release = ()
+        capture element
+        capture type
+        capture action
+        element.removeEventListener(type, action)
+    releases = control.release
+    releases.add(release)
+    return null

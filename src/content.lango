@@ -1,0 +1,73 @@
+import js global document
+
+export appendContent(form, element, content, renderer)
+export bindAction(control, element, url)
+export decorate(control, props)
+
+decorate(control, props)
+    if props.style != null
+        for props.style as name: value
+            control.element.style.setProperty(name, value)
+    if props.aria != null
+        for props.aria as name: value
+            control.element.setAttribute("aria-${name}", value)
+    return null
+
+appendContent(form, element, content, renderer)
+    if content == null
+        return null
+    if is_array(content)
+        for content as value
+            appendContent(form, element, value, renderer)
+      else
+          if is_object(content) and is_string(content.type)
+              element.appendChild(renderer.build(form, content))
+            else
+                if !is_string(content) and !is_number(content)
+                    throw "Content must be text or a control"
+                element.appendChild(document/createTextNode("${content}"))
+    return null
+
+bindAction(control, element, url)
+    if url == null
+        return null
+    control.form.app.checkUrl(url)
+    element.tabIndex = 0
+    click = (event)
+        capture control
+        capture element
+        capture url
+        if event.defaultPrevented
+            return null
+        interactive = event.target.closest("button, a, input, select, textarea, label, [role=button], [role=tab], [contenteditable=true]")
+        if interactive != null and interactive != element
+            return null
+        event.preventDefault()
+        event.stopPropagation()
+        sendAction(control, url)
+    key = (event)
+        capture control
+        capture element
+        capture url
+        if event.target != element or (event.key != "Enter" and event.key != " ")
+            return null
+        event.preventDefault()
+        event.stopPropagation()
+        sendAction(control, url)
+    element.addEventListener("click", click)
+    element.addEventListener("keydown", key)
+    release = ()
+        capture element
+        capture click
+        capture key
+        element.removeEventListener("click", click)
+        element.removeEventListener("keydown", key)
+    releases = control.release
+    releases.add(release)
+    return null
+
+sendAction(control, url)
+    return chain control.form.send(url)
+      catch(error)
+        capture control
+        control.form.app.error(control.form, error)

@@ -1,0 +1,600 @@
+import js global document
+import js global Object
+import js global Reflect
+import "./control"
+    class Control
+import "./form"
+    class Form
+import "./widgets"
+    class Alert
+import "./content"
+    appendContent(form, element, content, renderer)
+import "./templates"
+    cloneMarkup(name, xml)
+    controlId()
+
+export class Toast(form, props, renderer) : Control
+    methods
+        find(name)
+        close()
+        dispose()
+
+Toast(form, props, renderer)
+    super(form, props, cloneMarkup("toast", <div class="toast show" role="status" aria-live="polite"><div class="toast-header"></div><div class="toast-body"></div></div>))
+    @closed = false
+    @timer = null
+    @scope = new Form(form.app, form, form.token)
+    @scope.presentation = @this
+    @scope.inheritThrough = true
+    @scope.element = @element
+    try
+        header = @element.firstElementChild
+        appendContent(@scope, header, props.header, renderer)
+        button = closeButton()
+        header.appendChild(button)
+        appendContent(@scope, @element.lastElementChild, props.body, renderer)
+        if props.theme != null
+            @element.classList.add("text-bg-${props.theme.toLowerCase()}")
+        if props.translucent == false
+            @element.style.setProperty("--bs-toast-bg", "var(--bs-body-bg)")
+            @element.style.setProperty("--bs-bg-opacity", "1")
+        if props.translucent == true
+            @element.style.setProperty("--bs-bg-opacity", ".85")
+        listener = ()
+            close()
+        button.addEventListener("click", listener)
+        release = ()
+            capture button
+            capture listener
+            button.removeEventListener("click", listener)
+        @release.add(release)
+        if props.instant == true
+            action = ()
+                close()
+            @timer = form.app.schedule(action, 5000)
+    catch error
+        dispose()
+        throw error
+
+Toast:find(name)
+    return @scope.find(name)
+
+Toast:close()
+    dispose()
+    return null
+
+Toast:dispose()
+    if !@closed
+        @closed = true
+        if @timer != null
+            @form.app.cancelTimer(@timer)
+            @timer = null
+        @scope.dispose()
+        @form.unregister(@this)
+        super.dispose()
+        @element.remove()
+    return null
+
+export class ToastStack(form, props, renderer) : Control
+    methods
+        add(props, token)
+        find(name)
+        dispose()
+
+ToastStack(form, props, renderer)
+    super(form, props, cloneMarkup("toast-stack", <div class="toast-container lango-toast-stack"></div>))
+    @renderer = renderer
+    @scope = new Form(form.app, form, form.token)
+    @scope.inheritThrough = true
+    @scope.element = @element
+    @closed = false
+    try
+        if props.toasts != null
+            for props.toasts as toast
+                add(toast, form.token)
+    catch error
+        dispose()
+        throw error
+
+ToastStack:add(props, token)
+    @scope.token = token
+    return mountToast(@scope, props, @element, @renderer)
+
+ToastStack:find(name)
+    return @scope.find(name)
+
+ToastStack:dispose()
+    if !@closed
+        @closed = true
+        @scope.dispose()
+        @form.unregister(@this)
+        super.dispose()
+        @element.remove()
+    return null
+
+export class Dialog(owner, props, renderer, manager, source) : Form
+    properties
+        owner
+        name
+        modal
+    methods
+        open()
+        bind()
+        hide()
+        focusSaved()
+        userClose()
+        dispose()
+
+Dialog(owner, props, renderer, manager, source)
+    super(owner.app, owner, source.token)
+    @owner = owner
+    @presentation = @this
+    @manager = manager
+    @name = props.name
+    if @name == null and is_object(props.body) and props.body.type == "form"
+        @name = props.body.name
+    @modal = cloneMarkup("dialog", <dialog class="lango-dialog" tabindex="-1"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5"></h2></div><div class="lango-dialog-content"></div></div></dialog>)
+    @element = @modal.querySelector(".lango-dialog-content")
+    @listeners = []
+    @focus = null
+    @closing = false
+    @closeUrl = props.closeUrl
+    try
+        if @closeUrl != null
+            owner.app.checkUrl(@closeUrl)
+        checkName(@name)
+        heading = @modal.querySelector(".modal-title")
+        heading.id = controlId()
+        heading.textContent = titleText(props.title)
+        @modal.setAttribute("aria-labelledby", heading.id)
+        @button = closeButton()
+        @modal.querySelector(".modal-header").appendChild(@button)
+        body = document/createElement("div")
+        body.className = "modal-body"
+        @element.appendChild(body)
+        if is_object(props.body) and props.body.type == "form"
+            @inheritedNames = props.body.inheritedNames
+            if @inheritedNames == null
+                @inheritedNames = []
+            for props.body.controls as control
+                body.appendChild(renderer.build(@this, control))
+          else
+              appendContent(@this, body, props.body, renderer)
+        if props.footer != null
+            footer = document/createElement("div")
+            footer.className = "modal-footer"
+            appendContent(@this, footer, props.footer, renderer)
+            @element.appendChild(footer)
+        if props.dark == true
+            @modal.setAttribute("data-bs-theme", "dark")
+        if props.blur == true
+            @modal.classList.add("lango-dialog-blur")
+        if props.scrollable == true
+            @modal.classList.add("lango-dialog-scrollable")
+        if props.size != null
+            sizes = ["sm", "lg", "xl", "fullscreen"]
+            if !sizes.includes(props.size)
+                throw "Unsupported dialog size"
+            @modal.classList.add("lango-dialog-${props.size}")
+        cancel = (event)
+            event.preventDefault()
+            userClose()
+        click = ()
+            userClose()
+        focused = (event)
+            @focus = event.target
+            return @focus
+        @modal.addEventListener("cancel", cancel)
+        @button.addEventListener("click", click)
+        @modal.addEventListener("focusin", focused)
+        @listeners = [cancel, click, focused]
+    catch error
+        dispose()
+        throw error
+
+Dialog:open()
+    saved = @focus
+    if !@modal.isConnected
+        document/body/appendChild(@modal)
+    if !@modal.open
+        @modal.showModal()
+    if saved != null and @modal.contains(saved)
+        @focus = saved
+    focusSaved()
+    return null
+
+Dialog:bind()
+    controls = @owner.controls
+    if !@owner.owned.includes(@this)
+        @owner.register(@name, @this)
+      else
+          if @name != null
+              existing = controls[@name]
+              if existing != null and existing != @this
+                  throw "Duplicate dialog name: ${@name}"
+              controls[@name] = @this
+    return null
+
+Dialog:hide()
+    controls = @owner.controls
+    for Object/keys(controls) as name
+        if controls[name] == @this
+            Reflect/deleteProperty(controls, name)
+    if @modal.open
+        @modal.close()
+    return null
+
+Dialog:focusSaved()
+    if @focus != null and @modal.contains(@focus)
+        @focus.focus()
+      else
+          @modal.focus()
+    return null
+
+Dialog:userClose()
+    if @disposed or @closing
+        return null
+    if @closeUrl == null
+        @manager.closeSpecific(@this)
+        return null
+    @closing = true
+    @button.disabled = true
+    return chain send(@closeUrl)
+      then(ignored)
+        if !@disposed
+            @manager.closeSpecific(@this)
+      catch(error)
+        if !@disposed
+            @app.error(@this, error, "DialogCloseFailed")
+      finally
+        @closing = false
+        @button.disabled = false
+
+Dialog:dispose()
+    if @disposed
+        return null
+    hide()
+    if @listeners.length > 0
+        @modal.removeEventListener("cancel", @listeners[0])
+        @button.removeEventListener("click", @listeners[1])
+        @modal.removeEventListener("focusin", @listeners[2])
+    @owner.unregister(@this)
+    @manager.forgetDialog(@this)
+    super.dispose()
+    @modal.remove()
+    return null
+
+export class Presentations(renderer)
+    methods
+        showAlert(form, command)
+        dismissAlert(form, name)
+        showToast(form, props, stack = null)
+        showDialog(form, props, keepPrev = false)
+        swapDialog(form)
+        closeSpecific(dialog)
+        forgetDialog(dialog)
+        forgetRegion(region)
+        dismiss(form)
+        slot(owner, create = true)
+
+Presentations(renderer)
+    @renderer = renderer
+    @slots = []
+    @regions = []
+
+Presentations:showAlert(form, command)
+    checkName(command.name)
+    parent = form.element
+    anchor = null
+    position = "inside"
+    lifetime = form
+    if command.place != null
+        place = command.place
+        positions = ["before", "after", "inside"]
+        if !is_object(place) or !is_string(place.name) or !positions.includes(place.position)
+            throw "Alert place requires name and position"
+        target = form.find(place.name)
+        anchor = target.element
+        position = place.position
+        if is_kindof(target, Form)
+            lifetime = target
+            if position != "inside" and target.parent != null
+                lifetime = target.parent
+          else
+              if target.form != null
+                  lifetime = target.form
+        if position == "inside"
+            parent = anchor
+          else
+              parent = anchor.parentElement
+        if parent == null
+            throw "Alert target is not mounted"
+    old = null
+    controls = form.controls
+    name = command.name
+    if command.name != null
+        old = controls[name]
+        if old != null and !is_kindof(old, Alert)
+            throw "Alert name belongs to another control"
+    if old != null and anchor == old.element and position == "inside"
+        throw "Alert cannot be placed inside itself"
+    alert = new Alert(form, command)
+    if old != null
+        Reflect/deleteProperty(controls, name)
+    try
+        form.register(command.name, alert)
+        alert.attach(lifetime)
+        if position == "before"
+            parent.insertBefore(alert.element, anchor)
+          else
+              if position == "after"
+                  parent.insertBefore(alert.element, anchor.nextSibling)
+                else
+                    parent.prepend(alert.element)
+    catch error
+        alert.dispose()
+        if old != null
+            controls[name] = old
+        throw error
+    if old != null
+        old.close()
+    return null
+
+Presentations:dismissAlert(form, name)
+    control = null
+    try
+        control = form.find(name)
+    catch error
+        if is_string(error) and error.startsWith("Unknown control:")
+            return null
+        throw error
+    if !is_kindof(control, Alert)
+        throw "DismissAlert requires an Alert"
+    control.close()
+    return null
+
+Presentations:showToast(form, props, stack = null)
+    if !is_object(props) or props.type != "toast"
+        throw "ShowToast requires a Toast definition"
+    checkName(props.name)
+    if stack != null
+        target = form.find(stack)
+        if !is_kindof(target, ToastStack)
+            throw "ShowToast requires a ToastStack"
+        target.add(props, form.token)
+        return null
+    position = props.position
+    if position == null
+        position = "bottom-right"
+    positions = ["top-left", "top-center", "top-right", "middle-left", "middle-center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
+    if !positions.includes(position)
+        throw "Unsupported toast position"
+    region = null
+    created = false
+    for @regions as current
+        if current.form == form and current.element.isConnected and current.position == position
+            region = current
+    if region == null
+        region = new ToastRegion(form, position, @this)
+        @regions.add(region)
+        form.register(null, region)
+        form.element.appendChild(region.element)
+        created = true
+    try
+        mountToast(form, props, region.element, @renderer)
+    catch error
+        if created
+            region.dispose()
+        throw error
+    return null
+
+Presentations:slot(owner, create = true)
+    for @slots as current
+        if current.owner == owner
+            return current
+    if !create
+        return null
+    result = {
+        owner: owner
+        current: null
+        previous: null
+    }
+    @slots.add(result)
+    return result
+
+Presentations:showDialog(form, props, keepPrev = false)
+    if keepPrev == null
+        keepPrev = false
+    if !is_bool(keepPrev)
+        throw "Dialog keepPrev must be boolean"
+    if props == null
+        current = containingDialog(form)
+        if current == null
+            existingSlot = slot(form, false)
+            if existingSlot != null
+                current = existingSlot.current
+        if current != null
+            closeSpecific(current)
+        return null
+    if !is_object(props) or props.type != "dialog"
+        throw "ShowDialog requires a Dialog definition"
+    owner = form
+    containing = containingDialog(form)
+    if containing != null
+        owner = containing.owner
+    currentSlot = slot(owner)
+    candidate = new Dialog(owner, props, @renderer, @this, form)
+    existing = null
+    controls = owner.controls
+    name = candidate.name
+    if candidate.name != null
+        existing = controls[name]
+    if existing != null and existing != currentSlot.current
+        candidate.dispose()
+        throw "Dialog name belongs to another control"
+    try
+        candidate.open()
+    catch error
+        candidate.dispose()
+        throw error
+    old = currentSlot.current
+    previous = currentSlot.previous
+    if old != null
+        old.hide()
+    candidate.bind()
+    currentSlot.current = candidate
+    currentSlot.previous = null
+    if keepPrev
+        currentSlot.previous = old
+      else
+          if old != null
+              old.dispose()
+    if previous != null and previous != old
+        previous.dispose()
+    candidate.focusSaved()
+    return null
+
+Presentations:swapDialog(form)
+    owner = form
+    containing = containingDialog(form)
+    if containing != null
+        owner = containing.owner
+    currentSlot = slot(owner, false)
+    if currentSlot == null
+        return null
+    current = currentSlot.current
+    previous = currentSlot.previous
+    if current == null or previous == null
+        return null
+    checkAlias(previous, current)
+    current.hide()
+    previous.open()
+    previous.bind()
+    currentSlot.current = previous
+    currentSlot.previous = current
+    return null
+
+Presentations:closeSpecific(dialog)
+    currentSlot = slot(dialog.owner, false)
+    if currentSlot == null
+        dialog.dispose()
+        return null
+    restore = null
+    if currentSlot.current == dialog
+        restore = currentSlot.previous
+        if restore != null
+            checkAlias(restore, dialog)
+        currentSlot.current = restore
+        currentSlot.previous = null
+    if currentSlot.previous == dialog
+        currentSlot.previous = null
+    dialog.dispose()
+    if restore != null and !restore.disposed
+        restore.open()
+        restore.bind()
+    return null
+
+Presentations:forgetDialog(dialog)
+    for @slots.slice() as current
+        if current.current == dialog
+            current.current = null
+        if current.previous == dialog
+            current.previous = null
+        if current.current == null and current.previous == null
+            @slots.splice(@slots.indexOf(current), 1)
+    return null
+
+Presentations:forgetRegion(region)
+    index = @regions.indexOf(region)
+    if index >= 0
+        @regions.splice(index, 1)
+    return null
+
+Presentations:dismiss(form)
+    current = form
+    loop while current != null
+        presentation = current.presentation
+        if presentation != null
+            if is_kindof(presentation, Dialog)
+                return presentation.userClose()
+            if is_kindof(presentation, Toast)
+                presentation.close()
+                return null
+        current = current.parent
+    return null
+
+class ToastRegion(form, position, manager) : Control
+    properties
+        position
+    methods
+        dispose()
+
+ToastRegion(form, position, manager)
+    super(form, {}, cloneMarkup("toast-region", <div class="toast-container lango-toast-region"></div>))
+    @position = position
+    @manager = manager
+    @element.setAttribute("data-position", position)
+
+ToastRegion:dispose()
+    @form.unregister(@this)
+    @manager.forgetRegion(@this)
+    super.dispose()
+    @element.remove()
+    return null
+
+mountToast(form, props, parent, renderer)
+    if !is_object(props) or props.type != "toast"
+        throw "ShowToast requires a Toast definition"
+    checkName(props.name)
+    old = null
+    controls = form.controls
+    name = props.name
+    if props.name != null
+        old = controls[name]
+        if old != null and !is_kindof(old, Toast)
+            throw "Toast name belongs to another control"
+    toast = new Toast(form, props, renderer)
+    if old != null
+        old.close()
+    form.register(props.name, toast)
+    parent.appendChild(toast.element)
+    return toast
+
+titleText(value)
+    if value == null
+        return ""
+    if is_object(value) and value.type == "text"
+        return value.text
+    if !is_string(value)
+        throw "Dialog title must be text"
+    return value
+
+closeButton()
+    button = document/createElement("button")
+    button.type = "button"
+    button.className = "btn-close"
+    button.setAttribute("aria-label", "×")
+    return button
+
+containingDialog(form)
+    current = form
+    loop while current != null
+        if is_kindof(current, Dialog)
+            return current
+        current = current.parent
+    return null
+
+checkName(name)
+    if name != null and (!is_string(name) or name.trim() == "" or name.includes("/"))
+        throw "Presentation name must be a single name segment"
+    return null
+
+checkAlias(dialog, permitted)
+    if dialog.name == null
+        return null
+    controls = dialog.owner.controls
+    name = dialog.name
+    current = controls[name]
+    if current != null and current != permitted and current != dialog
+        throw "Dialog name belongs to another control"
+    return null

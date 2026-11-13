@@ -1,0 +1,22 @@
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+
+export class InputGroup(form, props, renderer) : Control
+
+InputGroup(form, props, renderer)
+    super(form, props, cloneMarkup("input-group", <div class="input-group lango-input-group"></div>))
+    columns = []
+    if props.controls != null
+        for props.controls as definition
+            element = renderer.build(form, definition)
+            if definition.type == "input" or definition.type == "select"
+                element.classList.add("lango-input-group-field")
+                columns.add("minmax(0, 1fr)")
+              else
+                  columns.add("auto")
+                  if definition.type == "text"
+                      element.classList.add("input-group-text")
+            @element.appendChild(element)
+    @element.style.gridTemplateColumns = columns.join(" ")

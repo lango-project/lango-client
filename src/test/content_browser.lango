@@ -1,0 +1,333 @@
+import js global Object
+import js global Math
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+
+export reset()
+export serve(req, res)
+export exercise(page)
+
+global requests = []
+
+reset()
+    global requests
+    requests = []
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/content"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture req
+        capture res
+        capture body
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global requests
+    requests.add({
+        url: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    res.setHeader("x-lango-token", "content-token")
+    switch req.url
+      case "/"
+          res.end("{}")
+      case "/content"
+          res.end(to_json({
+              view: screen()
+          }))
+      case "/group/save"
+          res.end(to_json({
+              cmds: [{
+                  type: "invalid"
+                  name: "search"
+                  message: "Search needs correction"
+              }, {
+                  type: "changeCaption"
+                  name: "save"
+                  caption: "Group validated"
+              }, {
+                  type: "values"
+                  values: {
+                      search: "Server search"
+                  }
+              }]
+          }))
+      case "/group/reset"
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "save"
+                  caption: "Search ready"
+              }]
+          }))
+      case "/markdown/update"
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "article"
+                  caption: "## Updated\n\n**New content**"
+              }]
+          }))
+      case "/markdown/broken"
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "article"
+                  caption: {}
+              }]
+          }))
+      case "/replace"
+          res.end(to_json({
+              view: {
+                  type: "text"
+                  text: "Content removed"
+              }
+          }))
+    return null
+
+screen()
+    return {
+        type: "form"
+        controls: [{
+            type: "markdown"
+            name: "article"
+            aria: {
+                label: "Article"
+            }
+            text: markdownText()
+        }, {
+            type: "form"
+            name: "editor"
+            controls: [{
+                type: "inputGroup"
+                name: "searchGroup"
+                controls: [{
+                    type: "text"
+                    text: "@"
+                }, {
+                    type: "input"
+                    name: "search"
+                    label: "Search"
+                    description: "Enter a title"
+                    value: "Initial"
+                }, {
+                    type: "button"
+                    name: "save"
+                    caption: "Search now"
+                    url: "/group/save"
+                }, {
+                    type: "select"
+                    name: "scope"
+                    label: "Scope"
+                    value: "all"
+                    options: [{
+                        label: "All"
+                        value: "all"
+                    }, {
+                        label: "Mine"
+                        value: "mine"
+                    }]
+                }]
+            }, {
+                type: "button"
+                caption: "Reset validation"
+                url: "/group/reset"
+            }]
+        }, {
+            type: "button"
+            caption: "Update article"
+            url: "/markdown/update"
+        }, {
+            type: "button"
+            caption: "Invalid article"
+            url: "/markdown/broken"
+        }, {
+            type: "button"
+            caption: "Replace content"
+            url: "/replace"
+        }]
+    }
+
+markdownText()
+    return "# Article\n\n**Bold** and *italic* and ~~deleted~~.\n\n- [x] Done\n- [ ] Todo\n\n> Quoted\n\n| Name | Count |\n| --- | --- |\n| One | 1 |\n\n```js\nconst value = '<b>literal</b>';\n```\n\n[Safe link](https://example.test/page)\n\n[Unsafe link](javascript:alert(1))\n\n<img src=x onerror=alert(1)>\n\n<script>alert(1)</script>\n\n<svg onload=alert(1)></svg>"
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+exercise(page)
+    return chain page.getByRole("heading", {
+        name: "Article"
+    }).waitFor()
+      then(ignored)
+        capture page
+        return page.locator(".lango-markdown strong").textContent()
+      then(value)
+        capture page
+        assert value == "Bold"
+        return page.locator(".lango-markdown table tbody td").first().textContent()
+      then(value)
+        capture page
+        assert value == "One"
+        return page.locator(".lango-markdown input:disabled").count()
+      then(count)
+        capture page
+        assert count == 2
+        return page.getByText("Unsafe link", {
+            exact: true
+        }).getAttribute("href")
+      then(value)
+        capture page
+        assert value == null
+        return page.locator(".lango-markdown img, .lango-markdown script, .lango-markdown svg, .lango-markdown [onerror], .lango-markdown [onload]").count()
+      then(count)
+        capture page
+        assert count == 0
+        return page.locator(".lango-markdown").textContent()
+      then(value)
+        capture page
+        assert value.includes("<img src=x onerror=alert(1)>")
+        assert value.includes("<script>alert(1)</script>")
+        return group(page)
+      then(ignored)
+        capture page
+        return article(page)
+      then(ignored)
+        capture page
+        return cleanup(page)
+
+group(page)
+    state = {}
+    return chain page.getByLabel("Search", {
+        exact: true
+    }).boundingBox()
+      then(box)
+        capture state
+        capture page
+        Object/assign(state, {
+            input: box
+        })
+        return page.getByRole("button", {
+            name: "Search now"
+        }).boundingBox()
+      then(box)
+        capture state
+        capture page
+        assert Math/abs(box.y - state.input.y) < 1
+        assert Math/abs(box.height - state.input.height) < 1
+        assert Math/abs(box.x - state.input.x - state.input.width) < 2
+        return page.getByLabel("Search", {
+            exact: true
+        }).fill("Edited")
+      then(ignored)
+        capture page
+        return click(page, "Search now")
+      then(ignored)
+        capture page
+        return page.getByText("Search needs correction", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        global requests
+        index = requests.length - 1
+        request = requests[index]
+        assert request.url == "/group/save"
+        assert request.token == "Bearer content-token"
+        assert request.input.search == "Edited"
+        assert request.input.scope == "all"
+        assert request.input.searchGroup == null
+        assert !Object/hasOwn(request.input, "article")
+        return page.getByLabel("Search", {
+            exact: true
+        }).inputValue()
+      then(value)
+        capture page
+        assert value == "Server search"
+        return page.getByLabel("Search", {
+            exact: true
+        }).getAttribute("aria-describedby")
+      then(value)
+        capture page
+        assert value.split(" ").length == 2
+        return click(page, "Reset validation")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Search ready"
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.getByLabel("Search", {
+            exact: true
+        }).getAttribute("aria-describedby")
+      then(value)
+        assert value.split(" ").length == 1
+
+article(page)
+    return chain click(page, "Update article")
+      then(ignored)
+        capture page
+        return page.getByRole("heading", {
+            name: "Updated"
+        }).waitFor()
+      then(ignored)
+        capture page
+        return click(page, "Invalid article")
+      then(ignored)
+        capture page
+        return page.getByText("Markdown text must be a string", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        return page.locator(".lango-markdown strong").textContent()
+      then(value)
+        assert value == "New content"
+
+cleanup(page)
+    state = {}
+    return chain page.getByRole("button", {
+        name: "Search ready"
+    }).elementHandle()
+      then(handle)
+        capture state
+        capture page
+        Object/assign(state, {
+            handle: handle
+        })
+        return click(page, "Replace content")
+      then(ignored)
+        capture page
+        return page.getByText("Content removed").waitFor()
+      then(ignored)
+        capture state
+        global requests
+        Object/assign(state, {
+            count: requests.length
+        })
+        return state.handle.dispatchEvent("click")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(50)
+      then(ignored)
+        capture state
+        global requests
+        assert requests.length == state.count

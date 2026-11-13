@@ -6,6 +6,55 @@ import "../app"
 import "../form"
     class Form
 
+class Removing(form, released)
+    methods
+        getValue()
+        dispose()
+
+Removing(form, released)
+    @form = form
+    @released = released
+
+Removing:getValue()
+    return null
+
+Removing:dispose()
+    @released.add(@this)
+    @form.unregister(@this)
+    return null
+
+test "self-unregistering controls cannot skip sibling cleanup"
+    app = new App({}, {})
+    form = new Form(app)
+    released = []
+    form.register("first", new Removing(form, released))
+    form.register("second", new Removing(form, released))
+    form.dispose()
+    assert released.length == 2
+    assert form.owned.length == 0
+
+test "presentation scopes preserve explicit inherited reads and writes"
+    app = new App({}, {})
+    root = new Form(app)
+    root.register("name", value("Root"))
+    presentation = new Form(app, root)
+    presentation.inheritThrough = true
+    child = new Form(app, presentation)
+    child.inheritedNames = ["name"]
+    child.register("own", value(1))
+    result = child.getValue()
+    assert result.name == "Root"
+    child.setValue({
+        name: "Changed"
+    })
+    assert root.find("name").getValue() == "Changed"
+    failed = false
+    try
+        presentation.find("name")
+    catch error
+        failed = true
+    assert failed
+
 test "nested values preserve null and inherited values write through"
     app = new App({}, {})
     root = new Form(app)

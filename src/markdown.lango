@@ -1,0 +1,48 @@
+import js "marked" as marked
+import js "dompurify" as purifier
+import js global window
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+
+export escapeHtml(text)
+
+escapeHtml(text)
+    return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+
+literalHtml(token)
+    return escapeHtml(token.text)
+
+export class Markdown(form, props) : Control
+    methods
+        setCaption(value)
+
+Markdown(form, props)
+    super(form, props, cloneMarkup("markdown", <div class="lango-markdown"></div>))
+    @parser = new marked/Marked({
+        gfm: true
+        breaks: false
+        async: false
+        renderer: {
+            html: literalHtml
+        }
+    })
+    createPurifier = purifier.default
+    @purifier = createPurifier(window)
+    setCaption(props.text)
+
+Markdown:setCaption(value)
+    if value == null
+        value = ""
+    if !is_string(value)
+        throw "Markdown text must be a string"
+    fragment = @purifier.sanitize(@parser.parse(value), {
+        RETURN_DOM_FRAGMENT: true
+        ALLOW_DATA_ATTR: false
+        ALLOW_ARIA_ATTR: false
+        ALLOWED_TAGS: ["p", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "em", "del", "blockquote", "pre", "code", "ul", "ol", "li", "hr", "br", "a", "img", "table", "thead", "tbody", "tr", "th", "td", "input"]
+        ALLOWED_ATTR: ["href", "title", "src", "alt", "class", "start", "align", "type", "checked", "disabled"]
+    })
+    @element.replaceChildren(fragment)
+    return @this

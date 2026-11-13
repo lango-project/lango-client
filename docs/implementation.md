@@ -18,9 +18,16 @@
    timers and non-overlapping intervals, cancellable longpoll with serialized
    delivery, cursor/deduplication/backoff/resync, and bounded technical error
    reports. Polls yield to ordinary sends and Ping; report failures cannot recurse.
-5. **Control catalog.** Implement the remaining controls, advanced fields,
-   Alert/Toast/Dialog commands, progress updates, tabs and navigation controls.
-6. **Application delivery.** Provide a reproducible application generator,
+5. **Presentation commands — implemented.** Named/positioned Alerts, Toasts and
+   ToastStacks, timed Toast disposal, native Dialog keep/swap/close lifecycle,
+   independent dialog token/value scopes and accessible Progress updates.
+6. **Control catalog — partially implemented.** Cards/images/badges/toolbars,
+   native tables with row/cell actions and column resizing, persistent tabs,
+   URL-aware navigation, breadcrumbs, recursive menus, ListGroup and value-bearing
+   Accordion, field-preserving InputGroup and sanitized Markdown with local
+   dependency assets. Remaining controls and advanced field presentation remain
+   open.
+7. **Application delivery.** Provide a reproducible application generator,
    deep-link hosting integration, and installation/package tests against actual
    Lango Server and Lango UI applications.
 

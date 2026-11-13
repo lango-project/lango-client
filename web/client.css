@@ -12,3 +12,65 @@
   animation: lango-spin .8s linear infinite;
 }
 @keyframes lango-spin { to { transform: rotate(360deg); } }
+.lango-indeterminate .progress-bar { opacity: .65; }
+.lango-progress { position: relative; }
+.lango-progress-label { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: var(--bs-body-color); }
+.lango-toast-stack, .lango-toast-region { display: flex; flex-direction: column; gap: .75rem; }
+.lango-toast-region { position: fixed; z-index: 1080; padding: .5rem; max-width: 95vw; }
+.lango-toast-region[data-position^="top-"] { top: .5rem; }
+.lango-toast-region[data-position^="middle-"] { top: 50%; transform: translateY(-50%); }
+.lango-toast-region[data-position^="bottom-"] { bottom: .5rem; }
+.lango-toast-region[data-position$="-left"] { left: .5rem; }
+.lango-toast-region[data-position$="-center"] { left: 50%; transform: translateX(-50%); }
+.lango-toast-region[data-position$="-right"] { right: .5rem; }
+.lango-toast-region[data-position="middle-center"] { transform: translate(-50%, -50%); }
+.lango-dialog { border: 0; border-radius: .5rem; padding: 0; width: min(90vw, 500px); max-height: 90vh; }
+.lango-dialog::backdrop { background: rgb(0 0 0 / .5); }
+.lango-dialog-blur::backdrop { backdrop-filter: blur(4px); }
+.lango-dialog-sm { width: min(90vw, 300px); }
+.lango-dialog-lg { width: min(90vw, 800px); }
+.lango-dialog-xl { width: min(95vw, 1140px); }
+.lango-dialog-fullscreen { width: 100vw; max-width: none; height: 100vh; max-height: none; border-radius: 0; }
+.lango-dialog-scrollable .lango-dialog-content { max-height: 75vh; overflow-y: auto; }
+.lango-card-main { flex: 1; min-width: 0; }
+.lango-card-media .figure { display: block; margin: 0; }
+.lango-card-media img { display: block; width: 100%; margin: 0; }
+.lango-card-horizontal { flex-direction: row; }
+.lango-card-horizontal .lango-card-media { flex: 0 0 35%; min-width: 0; }
+.lango-tab-vertical { display: flex; gap: 1rem; }
+.lango-tab-vertical > [role=tablist] { flex-shrink: 0; }
+.lango-tab > .tab-content { flex: 1; min-width: 0; }
+.lango-resizable-cell { position: relative; padding-right: 1rem !important; }
+.lango-col-resize { position: absolute; inset: 0 0 0 auto; width: .65rem; border: 0; padding: 0; background: transparent; cursor: col-resize; touch-action: none; }
+.lango-col-resize:hover, .lango-col-resize:focus-visible { background: var(--bs-primary); opacity: .5; }
+.lango-nav { flex-wrap: nowrap; overflow-x: auto; }
+.lango-nav > .nav-link { flex-shrink: 0; }
+.lango-nav-compact > .nav-link:not(.lango-nav-keep) .lango-nav-label { display: none; }
+.lango-menu { display: inline-block; }
+.lango-menu > .dropdown-menu { max-width: calc(100vw - 1rem); }
+.lango-menu .dropdown-item { white-space: normal; }
+.lango-submenu > .dropdown-menu { position: static; margin-left: .75rem; }
+.lango-submenu > [aria-haspopup=menu]::after { content: " ▸"; }
+.lango-menu-split { display: grid; grid-template-columns: minmax(0, 1fr) 2.5rem; }
+.lango-menu-split > .dropdown-menu { grid-column: 1 / -1; }
+.lango-menu-split > .lango-submenu-toggle::after { content: none; }
+.lango-menu-icon { display: inline-block; margin-inline-end: .5rem; }
+.lango-accordion-small .accordion-button, .lango-accordion-small .accordion-body { padding: .5rem .75rem; font-size: .875rem; }
+.lango-accordion-gap { display: flex; flex-direction: column; }
+.lango-accordion-gap > .accordion-item { border: var(--bs-accordion-border-width) solid var(--bs-accordion-border-color); border-radius: var(--bs-accordion-border-radius); overflow: hidden; }
+.lango-input-group { display: grid; grid-template-rows: auto auto auto auto; align-items: stretch; }
+.lango-input-group > * { grid-row: 2; min-width: 0; }
+.lango-input-group > .lango-input-group-field { display: grid; grid-row: 1 / -1; grid-template-rows: subgrid; margin-bottom: 0 !important; }
+.lango-input-group-field > .form-label { grid-row: 1; }
+.lango-input-group-field > :is(input, select, textarea) { grid-row: 2; width: 100%; }
+.lango-input-group-field > .form-text { grid-row: 3; }
+.lango-input-group-field > .invalid-feedback { grid-row: 4; }
+.lango-input-group > :not(:first-child) { margin-inline-start: -1px; }
+.lango-input-group > :not(:first-child):is(.btn, .input-group-text), .lango-input-group > .lango-input-group-field:not(:first-child) > :is(input, select, textarea) { border-start-start-radius: 0; border-end-start-radius: 0; }
+.lango-input-group > :not(:last-child):is(.btn, .input-group-text), .lango-input-group > .lango-input-group-field:not(:last-child) > :is(input, select, textarea) { border-start-end-radius: 0; border-end-end-radius: 0; }
+.lango-input-group-field:focus-within { position: relative; z-index: 3; }
+.lango-markdown { overflow-wrap: anywhere; }
+.lango-markdown img { max-width: 100%; }
+.lango-markdown pre { overflow-x: auto; }
+.lango-markdown table { display: block; overflow-x: auto; }
+.lango-markdown :is(td, th) { border: 1px solid var(--bs-border-color); padding: .25rem .5rem; }

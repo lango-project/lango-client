@@ -26,6 +26,7 @@ export class App(host, renderer)
         report(form, url, input, owner)
         executeDelivery(job)
         checkUrl(url)
+        hostUrl()
         request(url, input, token, signal = null, channel = false)
         poll(url, input, token, signal)
         canPoll(form)
@@ -63,6 +64,9 @@ App:now()
     if @host.now != null
         return @host.now()
     return Date/now()
+
+App:hostUrl()
+    return @host.location.href
 
 App:schedule(action, delay)
     return @host.schedule(action, delay)
@@ -387,6 +391,8 @@ App:navigate(url, push = true)
         capture push
         if push
             @host.history.pushState(null, "", "${target.pathname}${target.search}${target.hash}")
+        if @renderer.locationChanged != null
+            @renderer.locationChanged(target.href)
         return null
 
 App:selectTemplate(path)
@@ -426,6 +432,8 @@ App:command(form, cmd)
           if target.origin != @host.location.origin
               throw "UI URL must use the current origin"
           @host.history.pushState(null, "", "${target.pathname}${target.search}${target.hash}")
+          if @renderer.locationChanged != null
+              @renderer.locationChanged(target.href)
       case "redirect"
           action = ()
               capture cmd
@@ -440,6 +448,22 @@ App:command(form, cmd)
           form.find(cmd.name).setDisabled(false)
       case "changeCaption"
           form.find(cmd.name).setCaption(cmd.caption)
+      case "activateTabItem"
+          form.find(cmd.name).activate()
+      case "setProgress"
+          form.find(cmd.name).setRange(cmd.min, cmd.max, cmd.value)
+      case "updateProgress"
+          form.find(cmd.name).update(cmd.value, cmd.label)
+      case "showAlert"
+          @renderer.presentations.showAlert(form, cmd)
+      case "dismissAlert"
+          @renderer.presentations.dismissAlert(form, cmd.name)
+      case "showToast"
+          @renderer.presentations.showToast(form, cmd.toast, cmd.stack)
+      case "showDialog"
+          @renderer.presentations.showDialog(form, cmd.dialog, cmd.keepPrev)
+      case "swapDialog"
+          @renderer.presentations.swapDialog(form)
       case "setTimer"
           form.activity.timer(cmd.url, cmd.interval)
       case "clearTimer"

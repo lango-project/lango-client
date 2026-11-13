@@ -1,0 +1,46 @@
+import js global document
+import js global Number
+import "./control"
+    class Control
+import "./templates"
+    cloneMarkup(name, xml)
+import "./content"
+    decorate(control, props)
+
+export listIndex(value, length)
+
+listIndex(value, length)
+    if value == null
+        return -1
+    if !is_number(value) or !Number/isInteger(value) or value < -1 or value >= length
+        throw "ListGroup activeIndex must identify an item or be -1"
+    return value
+
+export class ListGroup(form, props, renderer) : Control
+
+ListGroup(form, props, renderer)
+    super(form, props, listElement(props.numbered == true))
+    items = props.items
+    if items == null
+        items = []
+    active = listIndex(props.activeIndex, items.length)
+    if props.flush == true
+        @element.classList.add("list-group-flush")
+    if props.horizontal == true
+        @element.classList.add("list-group-horizontal")
+    index = 0
+    for items as definition
+        item = document/createElement("li")
+        item.className = "list-group-item"
+        if index == active
+            item.classList.add("active")
+            item.setAttribute("aria-current", "true")
+        item.appendChild(renderer.build(form, definition))
+        @element.appendChild(item)
+        index = index + 1
+    decorate(@this, props)
+
+listElement(numbered)
+    if numbered
+        return cloneMarkup("list-numbered", <ol class="list-group list-group-numbered"></ol>)
+    return cloneMarkup("list", <ul class="list-group"></ul>)
