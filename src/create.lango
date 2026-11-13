@@ -1,0 +1,42 @@
+import js "node:fs" as fs
+import js "node:path" as path
+import js global process
+
+export main(args)
+export copyClient(source, destination, update = false)
+
+copyClient(source, destination, update = false)
+    source = path/resolve(source)
+    destination = path/resolve(destination)
+    relative = path/relative(source, destination)
+    if relative == "" or (relative != ".." and !relative.startsWith("..${path.sep}") and !path/isAbsolute(relative))
+        throw "Destination must be outside the client distribution"
+    if !fs/existsSync(path/join(source, "index.html")) or !fs/existsSync(path/join(source, "boot.mjs"))
+        throw "Client distribution is missing; build the package first"
+    if fs/existsSync(destination)
+        if !fs/statSync(destination).isDirectory()
+            throw "Client destination must be a directory"
+        if !update and fs/readdirSync(destination).length > 0
+            throw "Client destination is not empty; --update refreshes generated assets"
+    fs/mkdirSync(destination, {
+        recursive: true
+    })
+    fs/cpSync(source, destination, {
+        recursive: true
+        force: update
+        errorOnExist: !update
+    })
+    return destination
+
+main(args)
+    if args.length == 0 or args[0] == "--help"
+        println("Usage: lango-client <directory> [--update]")
+        println("Write the same-origin Web/Bootstrap browser application to a static directory.")
+        return null
+    if args.length > 2 or (args.length == 2 and args[1] != "--update")
+        throw "Usage: lango-client <directory> [--update]"
+    executable = fs/realpathSync(process.argv[1])
+    source = path/resolve(path/dirname(executable), "../dist")
+    directory = copyClient(source, args[0], args.length == 2)
+    println("Browser assets written to ${directory}")
+    return null

@@ -38,8 +38,48 @@ Keep POST `/` available for Lango UI startup and provide a UI endpoint at
 GET `/` serves the unchanged HTML shell. Its entry module sends POST `/`, saves
 the opaque response token, and requests POST `/index`. On a deep link, the client
 requests the initial pathname instead. A host must explicitly serve the HTML
-shell for those deep-link GETs; Lango Server's existing static handler returns
-404 for missing files and does not yet provide an SPA fallback.
+shell for those deep-link GETs. Lango Server 0.2.0 supports the explicit
+`fallback="index.html" runtime="true"` static settings used by the generated
+application. Without fallback configuration, missing paths still return 404.
+
+## Create an application
+
+To create a server-side Lango UI application with this browser runtime, use the
+UI package's generator after the delivery releases are published:
+
+```sh
+npm exec --package=@lango-project/lango-ui@0.4.0 -- create-lango-ui my-app
+cd my-app
+npm install
+npm test
+npm run dev
+```
+
+Open `http://127.0.0.1:3000/` or `/profile`. Application handlers live in
+`src/handlers.lango`, with `routes.xml` and `deploy.xml` selecting the npm exports
+and hosting settings. The browser remains a consumer of server control
+instructions. Rebuild/restart after changing the application source.
+
+For an existing application that only needs the static browser assets:
+
+```sh
+npm exec --package=@lango-project/lango-client@0.4.0 -- lango-client ./public
+```
+
+The first phase supports same-origin Web/Bootstrap. The destination must be
+empty. `--update` explicitly refreshes generated assets in an existing directory;
+use a dedicated output directory when maintaining a custom HTML shell. The
+command preserves the complete runtime and vendor trees; it does not generate
+business handlers or install dependencies. Keep private keys outside this output.
+
+`npm run test:starter` in this checkout tests delivery using sibling lango-ui,
+lango-server and lango-js checkouts (or `LANGO_STARTER_UI`,
+`LANGO_STARTER_SERVER`, `LANGO_STARTER_COMPILER` paths). It builds and packs them,
+installs the packed generator without a compiler, generates an app, installs and
+tests/builds it, verifies a stable local key, removes development dependencies,
+and exercises the actual server/UI/browser pipeline in Chromium. Offline installs
+use the dependency cache populated by installing the source repositories. No
+registry publish or existing user application is involved.
 
 ## Implemented behavior
 
@@ -549,6 +589,6 @@ values use DOM properties. Markdown uses its separate sanitization path.
   and rebuild the client. Optional absent lifecycle channels remain disabled.
 - Remaining work includes other pending controls and advanced field presentation. Unexpected send/navigation
   errors use a technical Toast; application messages remain application-owned.
-- Query/hash history policy, SPA hosting, and packaging a
-  generated application need integration work. The package currently builds one
-  fixed same-origin Web/Bootstrap application, not a multi-platform generator.
+- Query/hash history policy and additional platforms remain open. The delivery
+  generator currently targets same-origin Web/Bootstrap; deep-link static hosting
+  and a packed generated-application browser test are implemented.

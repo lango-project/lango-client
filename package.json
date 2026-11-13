@@ -1,6 +1,6 @@
 {
   "name": "@lango-project/lango-client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A browser runtime for server-driven Lango UI applications.",
   "type": "module",
   "license": "Apache-2.0",
@@ -17,18 +17,20 @@
     "web/**",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "cli/**"
   ],
   "lango": {
     "source": "src/library.lango",
     "output": "dist/library.mjs"
   },
   "scripts": {
-    "build": "lango build src/library.lango --out dist/library.mjs --target browser && lango build src/boot.lango --out dist/boot.mjs --target browser && lango run tools/assets.lango",
-    "test": "npm run build && lango test src/test/core.lango --build-dir .test-output/core && lango test src/test/heartbeat.lango --build-dir .test-output/heartbeat && lango test src/test/field_values.lango --build-dir .test-output/field-values && lango test src/test/activities.lango --build-dir .test-output/activities && lango test src/test/widgets.lango --build-dir .test-output/widgets",
+    "build": "lango build src/library.lango --out dist/library.mjs --target browser && lango build src/boot.lango --out dist/boot.mjs --target browser && lango run tools/assets.lango && lango build src/create.lango --out cli/create.mjs --executable",
+    "test": "npm run build && lango test src/test/core.lango --build-dir .test-output/core && lango test src/test/heartbeat.lango --build-dir .test-output/heartbeat && lango test src/test/field_values.lango --build-dir .test-output/field-values && lango test src/test/activities.lango --build-dir .test-output/activities && lango test src/test/widgets.lango --build-dir .test-output/widgets && lango test src/test/create.lango --build-dir .test-output/create",
     "test:browser": "npm run build && lango run tools/browser.lango test",
     "browser:install": "lango run tools/browser.lango install",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:starter": "npm run build && lango run tools/browser.lango starter"
   },
   "devDependencies": {
     "@lango-project/lango-js": "^0.1.16",
@@ -43,5 +45,8 @@
     "dompurify": "^3.4.17",
     "flatpickr": "^4.6.13",
     "marked": "^18.2.0"
+  },
+  "bin": {
+    "lango-client": "cli/create.mjs"
   }
 }

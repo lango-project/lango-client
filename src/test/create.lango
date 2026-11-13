@@ -1,0 +1,43 @@
+import js "node:fs" as fs
+import js "node:path" as path
+import "../create"
+    copyClient(source, destination, update = false)
+
+test "browser asset generation preserves runtime files and requires explicit replacement"
+    fs/mkdirSync(".test-output", {
+        recursive: true
+    })
+    dir = fs/mkdtempSync(path/resolve(".test-output/assets-"))
+    source = path/join(dir, "source")
+    destination = path/join(dir, "public")
+    fs/mkdirSync(path/join(source, ".lango"), {
+        recursive: true
+    })
+    html = <html><body></body></html>
+    fs/writeFileSync(path/join(source, "index.html"), "${html}")
+    fs/writeFileSync(path/join(source, "boot.mjs"), "ready")
+    fs/writeFileSync(path/join(source, ".lango", "runtime.mjs"), "runtime")
+    try
+        copyClient(source, destination)
+        assert fs/existsSync(path/join(destination, ".lango", "runtime.mjs"))
+        fs/writeFileSync(path/join(destination, "index.html"), "custom")
+        failed = false
+        try
+            copyClient(source, destination)
+        catch error
+            failed = true
+        assert failed
+        assert fs/readFileSync(path/join(destination, "index.html"), "utf8") == "custom"
+        copyClient(source, destination, true)
+        assert fs/readFileSync(path/join(destination, "index.html"), "utf8").includes("<html>")
+        failed = false
+        try
+            copyClient(source, path/join(source, "nested"), true)
+        catch error
+            failed = true
+        assert failed
+    finally
+        fs/rmSync(dir, {
+            recursive: true
+            force: true
+        })

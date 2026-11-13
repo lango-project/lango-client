@@ -30,9 +30,13 @@
    FormSpinner, Date range picker, single JSON/base64 File, OTP and explicit
    numeric/currency formatting are implemented. Decorative/input refinements
    remain open.
-7. **Application delivery — pending.** Provide a reproducible application generator,
-   deep-link hosting integration, and installation/package tests against actual
-   Lango Server and Lango UI applications.
+7. **Application delivery — first Web/Bootstrap flow implemented.** The UI package
+   creates a server application; the Client CLI writes static browser assets.
+   Lango Server supports opt-in extensionless HTML fallback and public compiler
+   runtime files. Packed installation, generated handler tests/builds, stable
+   signing keys, compiler-free startup and actual Chromium form/deep-link flows
+   are verified by the starter delivery test. Additional platforms and query/hash
+   navigation policy remain open.
 
 All application/runtime implementations stay in Lango. Browser-specific work
 belongs here; JWT claims, validation, and signing remain server-owned.

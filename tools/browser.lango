@@ -10,6 +10,8 @@ main(args)
         PLAYWRIGHT_BROWSERS_PATH: path/resolve(".test-output/browsers")
     })
     command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/browser.lango", "--build-dir", ".test-output/browser"]
+    if args[0] == "starter"
+        command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/starter.lango", "--build-dir", ".test-output/starter"]
     if args[0] == "install"
         command = ["node_modules/playwright/cli.js", "install", "chromium", "--only-shell"]
     result = child/spawnSync(process.execPath, command, {
