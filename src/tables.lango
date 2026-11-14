@@ -10,6 +10,7 @@ import "./content"
     decorate(control, props)
 
 export spanValue(value)
+export columnWidth(value)
 
 spanValue(value)
     if value == null
@@ -17,6 +18,13 @@ spanValue(value)
     if !is_number(value) or !Number/isInteger(value) or value < 1 or value > 1000
         throw "Table span must be an integer between 1 and 1000"
     return value
+
+columnWidth(value)
+    if value == null or value == -1
+        return null
+    if !is_number(value) or !Number/isInteger(value) or value < 1 or value > 12
+        throw "Table column width must be -1 or an integer between 1 and 12"
+    return "${value / 12 * 100}%"
 
 export class Table(form, props, renderer) : Control
 
@@ -26,6 +34,8 @@ Table(form, props, renderer)
     group = table.firstElementChild
     body = table.lastElementChild
     columns = []
+    headings = []
+    hasCaptions = false
     rows = []
     dividers = []
     width = 1
@@ -59,6 +69,13 @@ Table(form, props, renderer)
                   col = new TableCol(form, definition)
                   form.register(definition.name, col)
                   columns.add(col)
+                  headings.add({
+                      type: "tableCell"
+                      colSpan: definition.colSpan
+                      controls: definition.caption
+                  })
+                  if definition.caption != null
+                      hasCaptions = true
                   group.appendChild(col.element)
               case "tableHeader"
                   if header != null
@@ -80,6 +97,17 @@ Table(form, props, renderer)
                   body.appendChild(divider.element)
               else
                   throw "Unsupported Table child: ${definition.type}"
+    if header == null and hasCaptions
+        generated = {
+            controls: [{
+                type: "tableRow"
+                controls: headings
+            }]
+        }
+        header = new TableHeader(form, generated, renderer)
+        table.insertBefore(header.element, body)
+        for header.rows as heading
+            rows.unshift(heading)
     for rows as row
         if row.width > width
             width = row.width
@@ -187,11 +215,9 @@ TableCol(form, props)
     @span = spanValue(props.colSpan)
     @resize = props.resize == true
     @element.span = @span
-    if props.width != null
-        if is_number(props.width)
-            @element.style.width = "${props.width}px"
-          else
-              @element.style.width = props.width
+    width = columnWidth(props.width)
+    if width != null
+        @element.style.width = width
 
 TableCol:size(width)
     if width < 24

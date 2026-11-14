@@ -26,6 +26,7 @@ test "progress rejects invalid ranges and nonnumeric values before updating a vi
 
 import "../tables"
     spanValue(value)
+    columnWidth(value)
 import "../navigation"
     navigationMatch(url, current)
 
@@ -192,6 +193,21 @@ test "file limits default to one MiB and reject ambiguous byte limits"
         failed = false
         try
             fileLimit(value)
+        catch error
+            failed = true
+        assert failed
+
+
+test "table column widths use twelve grid units and preserve automatic sizing"
+    assert columnWidth(null) == null
+    assert columnWidth(-1) == null
+    assert columnWidth(3) == "25%"
+    assert columnWidth(6) == "50%"
+    assert columnWidth(12) == "100%"
+    for [0, -2, 1.5, 13, 160, "6", "160px"] as width
+        failed = false
+        try
+            columnWidth(width)
         catch error
             failed = true
         assert failed

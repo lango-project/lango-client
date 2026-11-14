@@ -40,3 +40,11 @@
 
 All application/runtime implementations stay in Lango. Browser-specific work
 belongs here; JWT claims, validation, and signing remain server-owned.
+
+
+Table column metadata accepts `caption` and `width`. Widths are integer units from 1 to 12;
+for example, 4 requests one third of the table width and 6 requests half.
+`-1` leaves the width unset for automatic browser layout. If at least one column
+has a caption and the table has no explicit `tableHeader`, the renderer creates
+one header row using the column captions and spans. Explicit headers take
+precedence over column captions.
