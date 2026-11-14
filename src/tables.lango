@@ -1,3 +1,6 @@
+import js global getComputedStyle
+import "./dimensions"
+    measure(value, unit)
 import js global document
 import js global Number
 import "./control"
@@ -20,11 +23,7 @@ spanValue(value)
     return value
 
 columnWidth(value)
-    if value == null or value == -1
-        return null
-    if !is_number(value) or !Number/isInteger(value) or value < 1 or value > 12
-        throw "Table column width must be -1 or an integer between 1 and 12"
-    return "${value / 12 * 100}%"
+    return measure(value, "ch")
 
 export class Table(form, props, renderer) : Control
 
@@ -222,7 +221,16 @@ TableCol(form, props)
 TableCol:size(width)
     if width < 24
         width = 24
-    @element.style.width = "${width}px"
+    ruler = document/createElement("span")
+    ruler.textContent = "0"
+    font = getComputedStyle(@element)
+    ruler.style.font = font.font
+    ruler.style.position = "absolute"
+    ruler.style.visibility = "hidden"
+    document/body/appendChild(ruler)
+    unit = ruler.getBoundingClientRect().width
+    ruler.remove()
+    @element.style.width = "${width / unit}ch"
     @handle.setAttribute("aria-valuenow", "${width}")
     return null
 

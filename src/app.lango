@@ -109,6 +109,9 @@ App:request(url, input, token, signal = null, channel = false)
     headers = {
         "Content-Type": "application/json"
     }
+    headers["X-Lango-Screen"] = "wide"
+    if @host.screen != null
+        headers["X-Lango-Screen"] = @host.screen()
     if token != null
         headers.Authorization = "Bearer ${token}"
     options = {

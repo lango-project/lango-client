@@ -1,3 +1,6 @@
+import "./dimensions"
+    applyDimensions(element, props)
+    applyLayout(element, props)
 import js global Object
 import js global document
 import js global Reflect
@@ -146,6 +149,7 @@ BootstrapRenderer:build(form, props)
         for props.controls as item
             child.element.appendChild(build(child, item))
         resolveSpinner(child)
+        applyDimensions(child.element, props)
         return child.element
     if props.type in @factories
         custom = @factories[props.type](form, props)
@@ -189,8 +193,7 @@ BootstrapRenderer:build(form, props)
     if !(kind in @templates)
         throw "Unsupported control type: ${props.type}"
     element = cloneTemplate(@templates[kind])
-    if props.type == "row" or props.type == "col"
-        element.classList.add(props.type)
+    applyLayout(element, props)
     control = null
     if kind == "value"
         control = new Value(form, props, element)

@@ -1,0 +1,55 @@
+import js global Number
+
+export measure(value, unit)
+export applyDimensions(element, props)
+export applyLayout(element, props)
+
+measure(value, unit)
+    if value == null or value == -1
+        return null
+    if !is_number(value) or !Number/isFinite(value) or value <= 0
+        throw "Control dimensions must be positive numbers or -1 for automatic sizing"
+    return "${value}${unit}"
+
+applyDimensions(element, props)
+    width = measure(props.width, "ch")
+    height = measure(props.height, "lh")
+    if width != null
+        element.style.width = width
+        element.style.maxWidth = "100%"
+        element.style.boxSizing = "border-box"
+    if height != null
+        element.style.height = height
+    return null
+
+applyLayout(element, props)
+    switch props.type
+      case "row"
+          element.classList.add("lango-row")
+          gap = props.gap
+          if gap == null
+              gap = "normal"
+          switch gap
+            case "small"
+                element.style.setProperty("--lango-gap", ".5rem")
+            case "normal"
+                element.style.setProperty("--lango-gap", "1rem")
+            case "large"
+                element.style.setProperty("--lango-gap", "1.5rem")
+            else
+                throw "Row gap must be small, normal or large"
+      case "col"
+          element.classList.add("lango-col")
+          basis = measure(props.width, "ch")
+          grow = props.grow
+          if grow == null
+              grow = basis == null
+          if !is_bool(grow)
+              throw "Col grow must be boolean"
+          if basis != null
+              element.style.setProperty("--lango-basis", basis)
+          if grow
+              element.style.setProperty("--lango-grow", "1")
+            else
+                element.style.setProperty("--lango-grow", "0")
+    return null

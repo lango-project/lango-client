@@ -1,5 +1,7 @@
 import js global Object
 import js global Number
+import js global Math
+import js global Promise
 import "./resource_browser"
     alias staticServer = serve(req, res)
 
@@ -39,6 +41,7 @@ respond(req, res, input)
     requests.add({
         url: req.url
         input: input
+        screen: req.headers["x-lango-screen"]
         token: req.headers.authorization
     })
     res.setHeader("Content-Type", "application/json")
@@ -71,6 +74,14 @@ respond(req, res, input)
                   type: "changeCaption"
                   name: "location"
                   caption: "Location changed"
+              }]
+          }))
+      case "/layout"
+          res.end(to_json({
+              cmds: [{
+                  type: "changeCaption"
+                  name: "status"
+                  caption: "layout:${req.headers['x-lango-screen']}"
               }]
           }))
       case "/replace"
@@ -182,7 +193,7 @@ screen()
                     }]
                 }
             }]
-        }, table(), automaticTable(), {
+        }, table(), automaticTable(), responsiveLayout(), {
             type: "toolbar"
             items: [{
                 type: "button"
@@ -303,6 +314,106 @@ automaticTable()
         }]
     }
 
+responsiveLayout()
+    return {
+        type: "row"
+        gap: "normal"
+        controls: [{
+            type: "col"
+            width: 24
+            aria: {
+                label: "Fixed layout column"
+            }
+            controls: [{
+                type: "input"
+                name: "layoutInput"
+                width: 80
+                label: "Responsive field"
+            }]
+        }, {
+            type: "col"
+            aria: {
+                label: "Growing layout column"
+            }
+            controls: [{
+                type: "button"
+                caption: "Report screen"
+                url: "/layout"
+            }]
+        }]
+    }
+
+layoutBoxes(page)
+    fixed = page.locator(".lango-col[aria-label='Fixed layout column']").boundingBox()
+    growing = page.locator(".lango-col[aria-label='Growing layout column']").boundingBox()
+    field = page.getByLabel("Responsive field").boundingBox()
+    return Promise/all([fixed, growing, field])
+
+layoutActions(page)
+    state = {}
+    return chain page.getByLabel("Responsive field").waitFor()
+      then(ignored)
+        capture state
+        capture page
+        global requests
+        Object/assign(state, {
+            count: requests.length
+        })
+        return page.setViewportSize({
+            width: 768
+            height: 900
+        })
+      then(ignored)
+        capture page
+        return layoutBoxes(page)
+      then(boxes)
+        capture page
+        assert Math/abs(boxes[0].y - boxes[1].y) < 1
+        assert boxes[1].width > boxes[0].width
+        assert boxes[2].width <= boxes[0].width + 1
+        return page.setViewportSize({
+            width: 767
+            height: 900
+        })
+      then(ignored)
+        capture page
+        return layoutBoxes(page)
+      then(boxes)
+        capture page
+        capture state
+        global requests
+        assert boxes[1].y >= boxes[0].y + boxes[0].height
+        assert Math/abs(boxes[0].width - boxes[1].width) < 1
+        assert requests.length == state.count
+        return click(page, "Report screen")
+      then(ignored)
+        capture page
+        return status(page, "layout:narrow")
+      then(ignored)
+        capture page
+        global requests
+        last = requests.length - 1
+        assert requests[last].screen == "narrow"
+        return page.setViewportSize({
+            width: 768
+            height: 900
+        })
+      then(ignored)
+        capture page
+        return click(page, "Report screen")
+      then(ignored)
+        capture page
+        return status(page, "layout:wide")
+      then(ignored)
+        capture page
+        global requests
+        last = requests.length - 1
+        assert requests[last].screen == "wide"
+        return page.setViewportSize({
+            width: 1280
+            height: 900
+        })
+
 status(page, name)
     return page.getByRole("button", {
         name: name
@@ -310,10 +421,13 @@ status(page, name)
     }).waitFor()
 
 exercise(page)
-    return chain page.getByRole("columnheader", {
-        name: "Automatic column"
-        exact: true
-    }).count()
+    return chain layoutActions(page)
+      then(ignored)
+        capture page
+        return page.getByRole("columnheader", {
+            name: "Automatic column"
+            exact: true
+        }).count()
       then(count)
         capture page
         assert count == 1
@@ -331,7 +445,7 @@ exercise(page)
         return page.locator("table[aria-label='Automatic columns'] col").last().getAttribute("style")
       then(style)
         capture page
-        assert style.includes("50%")
+        assert style.includes("6ch")
         return page.getByLabel("Card title field").fill("Edited card")
       then(ignored)
         capture page

@@ -93,3 +93,10 @@
 .lango-waiting > .lango-form-spinner { filter: none; }
 .lango-custom-spinner::after { display: none; }
 .lango-spinner-rotate { width: 2rem; height: 2rem; border: .25rem dotted currentColor; border-radius: 50%; animation: lango-spin .8s linear infinite; }
+
+/* Columns stack below the same 48rem boundary advertised in request headers. */
+.lango-row { display: flex; flex-wrap: wrap; gap: var(--lango-gap, 1rem); min-width: 0; }
+.lango-row > .lango-col { flex: 0 0 100%; width: 100% !important; min-width: 0; max-width: 100%; }
+@media (min-width: 48rem) {
+  .lango-row > .lango-col { flex: var(--lango-grow, 1) 1 var(--lango-basis, 0px); width: auto !important; }
+}

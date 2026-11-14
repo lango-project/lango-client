@@ -42,9 +42,25 @@ All application/runtime implementations stay in Lango. Browser-specific work
 belongs here; JWT claims, validation, and signing remain server-owned.
 
 
-Table column metadata accepts `caption` and `width`. Widths are integer units from 1 to 12;
-for example, 4 requests one third of the table width and 6 requests half.
+Table column metadata accepts `caption` and `width`. Positive widths are character
+units (`ch`), including fractional values.
 `-1` leaves the width unset for automatic browser layout. If at least one column
 has a caption and the table has no explicit `tableHeader`, the renderer creates
 one header row using the column captions and spans. Explicit headers take
 precedence over column captions.
+
+
+Common Control dimensions use `ch` for `width` and `lh` for `height`; omitted,
+null or `-1` means automatic sizing. Widths are bounded by the available space.
+Row uses wrapping flex layout with `small`, `normal`, or `large` gaps. On wide
+viewports, Col uses its character width as its basis, with optional boolean
+`grow` (default true only when no explicit width is present). Below 48rem, Col
+children stack at full available width. At exactly 48rem, wide layout applies.
+The CSS and request classification use the same media query.
+
+The browser host samples `(min-width: 48rem)` for every HTTP request, including
+startup, sends, Ping, reports and longpoll exchanges, and sends `X-Lango-Screen`
+as `wide` or `narrow`. Resizing changes layout through CSS without issuing an
+HTTP request or recreating the current view. The next request reports the new
+classification. Headless/custom App hosts without a screen callback default to
+wide. No dimensions or mode are persisted in tokens or storage.

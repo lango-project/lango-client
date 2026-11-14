@@ -1,3 +1,5 @@
+import "./dimensions"
+    applyDimensions(element, props)
 import js global document
 import "./templates"
     controlId()
@@ -20,6 +22,7 @@ export class Control(form, props, element)
 Control(form, props, element)
     @form = form
     @element = element
+    applyDimensions(element, props)
     @value = props.value
     @release = []
     @feedback = null

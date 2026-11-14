@@ -1,3 +1,5 @@
+import "../dimensions"
+    measure(value, unit)
 import "../widgets"
     progressRange(min, max, value = null)
 
@@ -198,16 +200,32 @@ test "file limits default to one MiB and reject ambiguous byte limits"
         assert failed
 
 
-test "table column widths use twelve grid units and preserve automatic sizing"
+test "table column widths use character units and preserve automatic sizing"
     assert columnWidth(null) == null
     assert columnWidth(-1) == null
-    assert columnWidth(3) == "25%"
-    assert columnWidth(6) == "50%"
-    assert columnWidth(12) == "100%"
-    for [0, -2, 1.5, 13, 160, "6", "160px"] as width
+    assert columnWidth(3) == "3ch"
+    assert columnWidth(6) == "6ch"
+    assert columnWidth(12) == "12ch"
+    assert columnWidth(24) == "24ch"
+    assert columnWidth(1.5) == "1.5ch"
+    for [0, -2, "6", "160px"] as width
         failed = false
         try
             columnWidth(width)
+        catch error
+            failed = true
+        assert failed
+
+
+test "control dimensions accept fractional font units and optional automatic sizing"
+    assert measure(24, "ch") == "24ch"
+    assert measure(3.5, "lh") == "3.5lh"
+    assert measure(null, "ch") == null
+    assert measure(-1, "lh") == null
+    for [0, -2, "24px"] as value
+        failed = false
+        try
+            measure(value, "ch")
         catch error
             failed = true
         assert failed

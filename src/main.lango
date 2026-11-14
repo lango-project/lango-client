@@ -25,6 +25,7 @@ start()
         mount: document/querySelector("#app")
         location: window.location
         history: window.history
+        screen: screenMode
         fetch: request
         defer: defer
         schedule: schedule
@@ -107,3 +108,10 @@ schedule(action, delay)
 cancelTimer(timer)
     clearTimeout(timer)
     return null
+
+
+screenMode()
+    media = window.matchMedia("(min-width: 48rem)")
+    if media.matches
+        return "wide"
+    return "narrow"
