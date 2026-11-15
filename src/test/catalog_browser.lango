@@ -297,18 +297,23 @@ automaticTable()
         controls: [{
             type: "tableCol"
             caption: "Automatic column"
+            colSpan: 2
             width: -1
         }, {
             type: "tableCol"
             caption: "Fixed column"
+            colSpan: 1
             width: 6
         }, {
             type: "tableRow"
             controls: [{
                 type: "tableCell"
+                colSpan: 2
                 controls: "Auto-sized content"
             }, {
                 type: "tableCell"
+                rowSpan: 1
+                colSpan: 1
                 controls: "Fixed-sized content"
             }]
         }]
@@ -446,6 +451,22 @@ exercise(page)
       then(style)
         capture page
         assert style.includes("6ch")
+        return page.locator("table [colspan='1'], table [rowspan='1'], table col[span='1']").count()
+      then(count)
+        capture page
+        assert count == 0
+        return page.locator("table[aria-label='Automatic columns'] col[span='2']").count()
+      then(count)
+        capture page
+        assert count == 1
+        return page.locator("table[aria-label='Automatic columns'] td[colspan='2']").count()
+      then(count)
+        capture page
+        assert count == 1
+        return page.locator(".lango-table-divider td").getAttribute("colspan")
+      then(span)
+        capture page
+        assert span == "2"
         return page.getByLabel("Card title field").fill("Edited card")
       then(ignored)
         capture page

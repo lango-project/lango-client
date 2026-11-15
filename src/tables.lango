@@ -22,6 +22,14 @@ spanValue(value)
         throw "Table span must be an integer between 1 and 1000"
     return value
 
+applySpan(element, name, value)
+    span = spanValue(value)
+    if span == 1
+        element.removeAttribute(name)
+      else
+          element.setAttribute(name, "${span}")
+    return null
+
 columnWidth(value)
     return measure(value, "ch")
 
@@ -111,7 +119,7 @@ Table(form, props, renderer)
         if row.width > width
             width = row.width
     for dividers as divider
-        divider.element.firstElementChild.colSpan = width
+        applySpan(divider.element.firstElementChild, "colspan", width)
     if rows.length > 0
         first = rows[0]
         offset = 0
@@ -174,8 +182,8 @@ export class TableCell(form, props, renderer, heading) : Control
 
 TableCell(form, props, renderer, heading)
     super(form, props, cellElement(heading))
-    @element.colSpan = spanValue(props.colSpan)
-    @element.rowSpan = spanValue(props.rowSpan)
+    applySpan(@element, "colspan", props.colSpan)
+    applySpan(@element, "rowspan", props.rowSpan)
     if props.verticalAlignment != null
         @element.style.verticalAlign = props.verticalAlignment
     if props.horizontalAlignment != null
@@ -213,7 +221,7 @@ TableCol(form, props)
     decorate(@this, props)
     @span = spanValue(props.colSpan)
     @resize = props.resize == true
-    @element.span = @span
+    applySpan(@element, "span", @span)
     width = columnWidth(props.width)
     if width != null
         @element.style.width = width
