@@ -193,7 +193,7 @@ screen()
                     }]
                 }
             }]
-        }, table(), automaticTable(), responsiveLayout(), {
+        }, table(), automaticTable(), responsiveLayout(), boundedLayout(), fluidLayout(), {
             type: "toolbar"
             items: [{
                 type: "button"
@@ -348,6 +348,78 @@ responsiveLayout()
         }]
     }
 
+boundedLayout()
+    return {
+        type: "container"
+        name: "bounded"
+        aria: {
+            label: "Bounded layout"
+        }
+        controls: [{
+            type: "input"
+            name: "containerInput"
+            label: "Container field"
+            value: "Same form"
+        }]
+    }
+
+fluidLayout()
+    return {
+        type: "container"
+        fluid: true
+        aria: {
+            label: "Fluid layout"
+        }
+        controls: [{
+            type: "row"
+            controls: [{
+                type: "col"
+                controls: [{
+                    type: "text"
+                    text: "Fluid content"
+                }]
+            }]
+        }]
+    }
+
+containerBoxes(page)
+    bounded = page.locator(".container[aria-label='Bounded layout']").boundingBox()
+    fluid = page.locator(".container-fluid[aria-label='Fluid layout']").boundingBox()
+    return Promise/all([bounded, fluid])
+
+containerActions(page)
+    return chain page.getByLabel("Container field").waitFor()
+      then(ignored)
+        capture page
+        return page.locator("#app").getAttribute("class")
+      then(classes)
+        capture page
+        assert !classes.includes("container")
+        return page.setViewportSize({
+            width: 1280
+            height: 900
+        })
+      then(ignored)
+        capture page
+        return containerBoxes(page)
+      then(boxes)
+        capture page
+        assert boxes[0].width < boxes[1].width
+        assert boxes[0].x > boxes[1].x
+        assert Math/abs(boxes[1].width - 1280) < 1
+        return page.setViewportSize({
+            width: 375
+            height: 900
+        })
+      then(ignored)
+        capture page
+        return containerBoxes(page)
+      then(boxes)
+        capture page
+        assert Math/abs(boxes[0].width - 375) < 1
+        assert Math/abs(boxes[1].width - 375) < 1
+        return page.getByLabel("Container field").fill("Same form")
+
 layoutBoxes(page)
     fixed = page.locator(".lango-col[aria-label='Fixed layout column']").boundingBox()
     growing = page.locator(".lango-col[aria-label='Growing layout column']").boundingBox()
@@ -399,6 +471,8 @@ layoutActions(page)
         global requests
         last = requests.length - 1
         assert requests[last].screen == "narrow"
+        assert requests[last].input.containerInput == "Same form"
+        assert requests[last].input.bounded == null
         return page.setViewportSize({
             width: 768
             height: 900
@@ -426,7 +500,10 @@ status(page, name)
     }).waitFor()
 
 exercise(page)
-    return chain layoutActions(page)
+    return chain containerActions(page)
+      then(ignored)
+        capture page
+        return layoutActions(page)
       then(ignored)
         capture page
         return page.getByRole("columnheader", {

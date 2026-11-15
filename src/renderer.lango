@@ -189,7 +189,7 @@ BootstrapRenderer:build(form, props)
         return field.element
     kind = props.type
     template = null
-    if kind == "row" or kind == "col"
+    if kind == "row" or kind == "col" or kind == "container"
         template = @templates.frame
       else
           if !(kind in @templates) or kind == "frame"
@@ -212,6 +212,7 @@ BootstrapRenderer:build(form, props)
     switch kind
       case "text"
           element.textContent = props.text
+      case "container"
       case "row"
       case "col"
           if props.controls != null

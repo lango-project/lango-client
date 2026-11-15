@@ -24,6 +24,16 @@ applyDimensions(element, props)
 
 applyLayout(element, props)
     switch props.type
+      case "container"
+          fluid = props.fluid
+          if fluid == null
+              fluid = false
+          if !is_bool(fluid)
+              throw "Container fluid must be boolean"
+          if fluid
+              element.classList.add("container-fluid")
+            else
+                element.classList.add("container")
       case "row"
           element.classList.add("lango-row")
           gap = props.gap

@@ -75,6 +75,10 @@ The client never decodes JWT claims. If storage cannot be cleared, the diagnosti
 reports that fact instead of claiming a new session was started.
 
 
-The generic `container` wire type has been removed. Use `row` or `col` for layout
-groups, and `form` when a form scope is intended. Forms and layout controls use
-an internal markup template; this does not introduce a public container control.
+The `container` wire type is a standalone layout group. Its optional boolean
+`fluid` defaults to false and chooses Bootstrap `.container` or `.container-fluid`.
+It registers children in the current Form and creates no separate value/token
+scope. Other controls do not inherit from the layout Container in the UI API.
+The HTML `#app` mount has no `.container` class; applications select their own
+width policy. The generated UI template supplies a bounded layout Container.
+The existing 48rem Row/Col and screen-header boundary is unchanged.

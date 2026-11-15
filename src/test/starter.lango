@@ -75,7 +75,7 @@ setup()
     handlerFile = path/join(app, "src/handlers.lango")
     source = fs/readFileSync(handlerFile, "utf8")
     source = "import \"./table\"\n    buildTable()\n${source}"
-    source = source.replace("    return form", "    form.add(buildTable())\n    return form")
+    source = source.replace("    return form", "    layout.add(buildTable())\n    return form")
     fs/writeFileSync(handlerFile, source)
     npm(app, ["run", "build"])
     key = fs/readFileSync(path/join(app, ".lango/keys.json"), "utf8")
