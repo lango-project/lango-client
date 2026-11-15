@@ -64,3 +64,12 @@ as `wide` or `narrow`. Resizing changes layout through CSS without issuing an
 HTTP request or recreating the current view. The next request reports the new
 classification. Headless/custom App hosts without a screen callback default to
 wide. No dimensions or mode are persisted in tokens or storage.
+
+
+If startup POST / rejects a saved opaque token with HTTP 401, the client removes
+only `lango.token` from localStorage and stops. It does not retry startup or issue
+page requests. A descriptive technical console error tells the user to reload;
+the next explicit reload starts without a saved token. Other startup failures
+and ordinary form/Ping/poll failures do not trigger this cleanup or retry.
+The client never decodes JWT claims. If storage cannot be cleared, the diagnostic
+reports that fact instead of claiming a new session was started.

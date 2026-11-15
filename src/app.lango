@@ -1,3 +1,4 @@
+import js global Error
 import js global Object
 import js global Promise
 import js global URL
@@ -21,13 +22,14 @@ export class App(host, renderer)
         start()
         post(url, input, token)
         saveToken(token)
+        clearSavedToken()
         send(form, url, owner = null)
         deliver(form, action, owner, generation)
         report(form, url, input, owner)
         executeDelivery(job)
         checkUrl(url)
         hostUrl()
-        request(url, input, token, signal = null, channel = false)
+        request(url, input, token, signal = null, channel = false, opening = false)
         poll(url, input, token, signal)
         canPoll(form)
         pausePolls(form = null)
@@ -98,13 +100,20 @@ App:saveToken(token)
         return null
     return null
 
+App:clearSavedToken()
+    try
+        @host.storage.removeItem("lango.token")
+        return true
+    catch error
+        return false
+
 App:post(url, input, token)
     return request(url, input, token)
 
 App:poll(url, input, token, signal)
     return request(url, input, token, signal, true)
 
-App:request(url, input, token, signal = null, channel = false)
+App:request(url, input, token, signal = null, channel = false, opening = false)
     target = checkUrl(url)
     headers = {
         "Content-Type": "application/json"
@@ -124,7 +133,13 @@ App:request(url, input, token, signal = null, channel = false)
     return chain @host.fetch("${target.pathname}${target.search}", options)
       then(res)
         capture channel
+        capture opening
+        capture token
         if !res.ok
+            if opening and res.status == 401 and token != null
+                if clearSavedToken()
+                    throw new Error("Startup HTTP 401: saved token was rejected and cleared. Reload the page to start a new session.")
+                throw new Error("Startup HTTP 401: saved token was rejected but storage could not be cleared. Clear this site's local storage and reload.")
             if !channel
                 throw "HTTP ${res.status}"
             if res.status != 409
@@ -164,7 +179,7 @@ App:start()
         token = @host.storage.getItem("lango.token")
     catch error
         token = null
-    return chain post("/", {}, token)
+    return chain request("/", {}, token, null, false, true)
       then(packet)
         @events = packet.body
         if @events.clientErrorUrl != null

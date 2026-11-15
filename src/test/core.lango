@@ -327,3 +327,78 @@ test "form sends wait for asynchronous values before collecting their payload"
         assert from_json(options.body).upload == "after"
         assert state.calls == 1
         return sent
+
+
+startupFailure(status)
+    state = {
+        token: "obsolete-token"
+        calls: 0
+        removed: 0
+    }
+    read = (key)
+        capture state
+        return state.token
+    remove = (key)
+        capture state
+        Object/assign(state, {
+            token: null
+            removed: state.removed + 1
+        })
+    fetch = (url, options)
+        capture state
+        capture status
+        state.calls = state.calls + 1
+        return Promise/resolve({
+            ok: false
+            status: status
+        })
+    app = new App({
+        storage: {
+            getItem: read
+            removeItem: remove
+        }
+        location: {
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        fetch: fetch
+    }, {})
+    return {
+        app: app
+        state: state
+    }
+
+test "startup clears a rejected saved token once and waits for an explicit reload"
+    fixture = startupFailure(401)
+    return chain fixture.app.start()
+      then(ignored)
+        throw "Unexpected startup success"
+      catch(error)
+        capture fixture
+        assert error.message.includes("Reload the page")
+        assert fixture.state.token == null
+        assert fixture.state.removed == 1
+        assert fixture.state.calls == 1
+        assert fixture.app.root == null
+
+test "startup preserves saved tokens on other failures and ordinary requests never clear them"
+    unavailable = startupFailure(503)
+    return chain unavailable.app.start()
+      then(ignored)
+        throw "Unexpected startup success"
+      catch(error)
+        capture unavailable
+        assert error == "HTTP 503"
+        assert unavailable.state.token == "obsolete-token"
+        assert unavailable.state.removed == 0
+        assert unavailable.state.calls == 1
+        ordinary = startupFailure(401)
+        return chain ordinary.app.post("/protected", {}, "obsolete-token")
+          then(ignored)
+            throw "Unexpected request success"
+          catch(error)
+            capture ordinary
+            assert error == "HTTP 401"
+            assert ordinary.state.token == "obsolete-token"
+            assert ordinary.state.removed == 0
+            assert ordinary.state.calls == 1

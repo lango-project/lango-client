@@ -1,0 +1,23 @@
+import js "@lango-project/lango-ui" as ui
+
+export buildTable()
+
+buildTable()
+    context log
+    context screen
+    log.info("Table example handler invoked")
+    assert is_bool(log.verbose?)
+    if log.verbose?
+        log.debug("Table example: narrow=${screen.narrow?}")
+    table = new ui/Table("example")
+    table.addCol({
+        name: "givenName"
+        width: 20
+        caption: "Given name"
+    })
+    table.addCol({
+        name: "familyName"
+        width: 30
+        caption: "Family name"
+    })
+    return table

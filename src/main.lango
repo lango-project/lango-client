@@ -15,6 +15,7 @@ start()
     storage = {
         getItem: missingToken
         setItem: discardToken
+        removeItem: missingToken
     }
     try
         storage = window.localStorage

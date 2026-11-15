@@ -1,6 +1,6 @@
 {
   "name": "@lango-project/lango-client",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A browser runtime for server-driven Lango UI applications.",
   "type": "module",
   "license": "Apache-2.0",
@@ -33,7 +33,7 @@
     "test:starter": "npm run build && lango run tools/browser.lango starter"
   },
   "devDependencies": {
-    "@lango-project/lango-js": "^0.1.16",
+    "@lango-project/lango-js": "^0.1.17",
     "bootstrap": "^5.3.9",
     "esbuild": "^0.28.2",
     "playwright": "^1.65.0"

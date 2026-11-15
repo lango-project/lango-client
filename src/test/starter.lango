@@ -71,6 +71,12 @@ setup()
     assert !fs/existsSync(path/join(app, "gitignore"))
     npm(app, ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--include=dev", uiArchive, serverArchive, clientArchive, compilerArchive])
     npm(app, ["test"])
+    fs/copyFileSync(path/join(root, "src/test/starter_table.lango"), path/join(app, "src/table.lango"))
+    handlerFile = path/join(app, "src/handlers.lango")
+    source = fs/readFileSync(handlerFile, "utf8")
+    source = "import \"./table\"\n    buildTable()\n${source}"
+    source = source.replace("    return form", "    form.add(buildTable())\n    return form")
+    fs/writeFileSync(handlerFile, source)
     npm(app, ["run", "build"])
     key = fs/readFileSync(path/join(app, ".lango/keys.json"), "utf8")
     npm(app, ["run", "build"])
@@ -89,7 +95,7 @@ setup()
 
 launch(app)
     file = path/join(app, "node_modules/@lango-project/lango-server/dist/cli/server.mjs")
-    child = children/spawn(process.execPath, [file, app], {
+    child = children/spawn(process.execPath, [file, app, "--verbose"], {
         cwd: app
         stdio: ["ignore", "pipe", "pipe"]
     })
@@ -145,6 +151,55 @@ stop(server)
     server.child.kill("SIGTERM")
     return server.exited
 
+rejectedStartup(page, server)
+    state = {
+        posts: 0
+        errors: []
+    }
+    observed = (res)
+        capture state
+        if res.request().method() == "POST"
+            state.posts = state.posts + 1
+    failed = (error)
+        capture state
+        state.errors.add(error.message)
+    page.on("response", observed)
+    page.on("pageerror", failed)
+    return chain page.evaluate("localStorage.setItem('lango.token', 'obsolete-test-token')")
+      then(ignored)
+        capture page
+        return page.reload()
+      then(ignored)
+        capture page
+        return page.waitForFunction("localStorage.getItem('lango.token') === null")
+      then(ignored)
+        capture page
+        return page.waitForTimeout(100)
+      then(ignored)
+        capture page
+        capture state
+        capture server
+        assert state.posts == 1
+        assert state.errors.length == 1
+        assert state.errors[0].includes("Reload the page")
+        assert server.text.includes("Authorization rejected before handler")
+        return page.reload()
+      then(ignored)
+        capture page
+        return page.getByRole("columnheader", {
+            name: "Family name"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture state
+        assert state.posts == 3
+      finally
+        capture page
+        capture observed
+        capture failed
+        page.removeListener("response", observed)
+        page.removeListener("pageerror", failed)
+
 test "packed generator creates a compiler-free running UI app with real browser deep links"
     files = setup()
     state = {}
@@ -194,6 +249,15 @@ test "packed generator creates a compiler-free running UI app with real browser 
         return page.goto("${state.origin}/profile")
       then(ignored)
         capture state
+        return state.page.getByRole("columnheader", {
+            name: "Family name"
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture state
+        assert state.server.text.includes("Table example handler invoked")
+        assert state.server.text.includes("UI handling /profile")
+        assert state.server.text.includes("Table example: narrow=false")
         return state.page.getByRole("button", {
             name: "Greet"
         }).click()
@@ -231,6 +295,9 @@ test "packed generator creates a compiler-free running UI app with real browser 
         return state.page.getByText("Enter your name to begin.", {
             exact: true
         }).waitFor()
+      then(ignored)
+        capture state
+        return rejectedStartup(state.page, state.server)
       then(ignored)
         capture state
         return state.browser.newPage()
