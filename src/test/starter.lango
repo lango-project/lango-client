@@ -182,7 +182,7 @@ rejectedStartup(page, server)
         assert state.posts == 1
         assert state.errors.length == 1
         assert state.errors[0].includes("Reload the page")
-        assert server.text.includes("Authorization rejected before handler")
+        assert server.error.includes("Authorization rejected before handler")
         return page.reload()
       then(ignored)
         capture page

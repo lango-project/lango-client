@@ -73,3 +73,8 @@ the next explicit reload starts without a saved token. Other startup failures
 and ordinary form/Ping/poll failures do not trigger this cleanup or retry.
 The client never decodes JWT claims. If storage cannot be cleared, the diagnostic
 reports that fact instead of claiming a new session was started.
+
+
+The generic `container` wire type has been removed. Use `row` or `col` for layout
+groups, and `form` when a form scope is intended. Forms and layout controls use
+an internal markup template; this does not introduce a public container control.

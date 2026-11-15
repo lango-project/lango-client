@@ -200,7 +200,7 @@ alert(value)
         type: "showAlert"
         name: "notice"
         message: {
-            type: "container"
+            type: "col"
             name: "message"
             controls: [{
                 type: "input"

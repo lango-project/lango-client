@@ -90,7 +90,7 @@ BootstrapRenderer()
     @templates = Object/create(null)
     @templates.text = createTemplate(<span></span>)
     @templates.value = createTemplate(<span hidden="hidden"></span>)
-    @templates.container = createTemplate(<div></div>)
+    @templates.frame = createTemplate(<div></div>)
     @fields = {
         input: Input
         checkbox: Checkbox
@@ -144,7 +144,7 @@ BootstrapRenderer:build(form, props)
         if child.inheritedNames == null
             child.inheritedNames = []
         form.register(props.name, child)
-        child.element = cloneTemplate(@templates.container)
+        child.element = cloneTemplate(@templates.frame)
         child.spinner = props.spinner
         for props.controls as item
             child.element.appendChild(build(child, item))
@@ -188,11 +188,14 @@ BootstrapRenderer:build(form, props)
                 field.element.setAttribute("aria-${name}", value)
         return field.element
     kind = props.type
+    template = null
     if kind == "row" or kind == "col"
-        kind = "container"
-    if !(kind in @templates)
-        throw "Unsupported control type: ${props.type}"
-    element = cloneTemplate(@templates[kind])
+        template = @templates.frame
+      else
+          if !(kind in @templates) or kind == "frame"
+              throw "Unsupported control type: ${props.type}"
+          template = @templates[kind]
+    element = cloneTemplate(template)
     applyLayout(element, props)
     control = null
     if kind == "value"
@@ -209,7 +212,8 @@ BootstrapRenderer:build(form, props)
     switch kind
       case "text"
           element.textContent = props.text
-      case "container"
+      case "row"
+      case "col"
           if props.controls != null
               for props.controls as item
                   element.appendChild(build(form, item))

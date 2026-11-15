@@ -370,7 +370,7 @@ modal(second)
             }]
         }
         footer: {
-            type: "container"
+            type: "col"
             controls: [{
                 type: "button"
                 name: "save"

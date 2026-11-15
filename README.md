@@ -106,7 +106,7 @@ registry publish or existing user application is involved.
 - Forms dispose child controls and registered resources when removed. Failed
   control construction preserves the previous view and its control registry.
 
-The Bootstrap renderer supports `form`, `container`, `row`, `col`, `text`,
+The Bootstrap renderer supports `form`, `row`, `col`, `text`,
 `button`, `value`, `input`, `checkbox`, `switch`, `select`, `radio`, `range`,
 `alert`, `progress`, `toast`, and `toastStack`. Dialog definitions are opened
 through `showDialog`.
