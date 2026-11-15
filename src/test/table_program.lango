@@ -1,0 +1,424 @@
+import js global document
+import js global location
+import js global Object
+import js global Promise
+import js global File
+import js global Event
+import "../app"
+    class App
+import "../form"
+    class Form
+import "../renderer"
+    class BootstrapRenderer
+
+export run()
+
+global completed = execute()
+
+execute()
+    pending = null
+    try
+        pending = run()
+    catch error
+        failed(error)
+        return null
+    return chain pending
+      then(ignored)
+        document/body/setAttribute("data-table-result", "passed")
+      catch(error)
+        failed(error)
+
+failed(error)
+    document/body/setAttribute("data-table-result", "failed")
+    body = document.body
+    body.textContent = "${error} ${error.stack}"
+
+run()
+    renderer = new BootstrapRenderer()
+    app = new App({
+        location: location
+    }, renderer)
+    form = new Form(app)
+    app.root = form
+    form.element = document/createElement("div")
+    document/body/appendChild(form.element)
+    definition = {
+        type: "table"
+        name: "people"
+        valueMode: "rows"
+        controls: [{
+            type: "tableCol"
+            name: "ad"
+            caption: "Given name"
+            width: 20
+            resize: true
+        }, {
+            type: "tableCol"
+            name: "soyad"
+            caption: "Family name"
+        }, {
+            type: "tableRow"
+            controls: [{
+                type: "tableCell"
+                controls: "Old layout row"
+            }]
+        }]
+    }
+    form.element.appendChild(renderer.build(form, definition))
+    table = form.find("people")
+    header = table.element.querySelector("thead")
+    form.setValue({
+        people: [{
+            ad: "Savas"
+            soyad: "Alparslan"
+        }]
+    })
+    assert table.element.querySelector("tbody").textContent == "SavasAlparslan"
+    assert table.element.querySelector("thead") == header
+    assert table.element.querySelectorAll("col").length == 2
+    column = table.element.querySelector("col")
+    assert column.style.width == "20ch"
+    assert table.element.querySelectorAll("[colspan='1'], [rowspan='1']").length == 0
+    assert table.getValue()[0].ad == null
+    assert table.getValue()[0].soyad == null
+    app.command(form, {
+        type: "setCellValue"
+        name: "people"
+        index: 0
+        column: "ad"
+        value: "<img src=x onerror=alert(1)>"
+    })
+    assert table.element.querySelectorAll("img").length == 0
+    assert table.element.querySelector("tbody td").textContent == "<img src=x onerror=alert(1)>"
+    table.setCellValue(0, 1, {
+        note: "JSON"
+    })
+    assert table.element.querySelectorAll("tbody td")[1].textContent == "{\"note\":\"JSON\"}"
+    app.command(form, {
+        type: "addRow"
+        name: "people"
+        value: {
+            ad: "Last"
+        }
+    })
+    app.command(form, {
+        type: "insertRow"
+        name: "people"
+        beforeIndex: 1
+        value: {
+            ad: "Middle"
+        }
+    })
+    assert table.rows.length == 3
+    assert table.rows[1].element.textContent == "Middle"
+    table.insertRow(3)
+    assert table.rows.length == 4
+    app.command(form, {
+        type: "deleteRow"
+        name: "people"
+        index: 1
+    })
+    assert table.rows[1].element.textContent == "Last"
+    app.command(form, {
+        type: "setRowValue"
+        name: "people"
+        index: 1
+        value: {
+            soyad: "Only surname"
+        }
+    })
+    assert table.rows[1].element.textContent == "Only surname"
+    metadata = {
+        secret: "not rendered"
+    }
+    rowElement = table.rows[0].element
+    app.command(form, {
+        type: "setRowData"
+        name: "people"
+        index: 0
+        value: metadata
+    })
+    metadata.secret = "mutated"
+    assert table.rows[0].data.secret == "not rendered"
+    assert table.rows[0].element == rowElement
+    assert !table.element.textContent.includes("not rendered")
+    assert !to_json(form.getValue()).includes("secret")
+    assert app.forms.length == 1
+    assert fails(invalidIndex, table)
+    assert table.rows.length == 3
+    assert fails(invalidRows, table)
+    assert table.rows.length == 3
+    table.setValue(null)
+    assert table.rows.length == 0
+    assert table.element.querySelector("thead") == header
+    table.addRow()
+    assert table.rows.length == 1
+    table.setValue([])
+    templateTests(app, form, renderer)
+    scopeTests(app, form, renderer)
+    return chain fileTests(app, form, renderer)
+      then(ignored)
+        capture app
+        capture form
+        form.dispose()
+        assert app.forms.length == 0
+        form.element.remove()
+        return true
+
+invalidIndex(table)
+    table.deleteRow(-1)
+
+invalidRows(table)
+    table.setValue([{}, "bad row"])
+
+fails(action, value)
+    try
+        action(value)
+    catch error
+        return true
+    return false
+
+templateTests(app, form, renderer)
+    form.element.appendChild(renderer.build(form, {
+        type: "table"
+        name: "edit"
+        valueMode: "mixed"
+        rowTemplate: {
+            type: "tableRowTemplate"
+            data: {
+                internal: 1
+            }
+            controls: [{
+                type: "tableCell"
+                controls: [{
+                    type: "input"
+                    name: "local"
+                }]
+            }, {
+                type: "tableCell"
+                controls: [{
+                    type: "value"
+                    name: "left"
+                }, {
+                    type: "value"
+                    name: "right"
+                }]
+            }]
+        }
+        controls: [{
+            type: "tableCol"
+            name: "title"
+        }, {
+            type: "tableCol"
+            name: "pair"
+        }]
+        value: [{
+            title: "First"
+            pair: {
+                left: 1
+                right: 2
+            }
+        }, {
+            title: "Second"
+            pair: {
+                left: 3
+                right: 4
+            }
+        }]
+    }))
+    table = form.find("edit")
+    assert app.forms.length == 1
+    assert table.rows[0].cells[0].getValue() == "First"
+    assert table.rows[1].cells[0].getValue() == "Second"
+    table.rows[0].cells[0].setValue("Edited")
+    assert table.rows[1].cells[0].getValue() == "Second"
+    values = form.getValue()
+    result = values.edit
+    assert result.rows[0].title == "Edited"
+    assert result.rows[1].pair.right == 4
+    assert Object/keys(result.cells).length == 0
+    assert !to_json(result).includes("internal")
+    table.setCellValue(1, "pair", {
+        left: 5
+        right: 6
+    })
+    result = table.getValue()
+    assert result.rows[1].pair.left == 5
+    firstData = table.rows[0].data
+    firstData.internal = 99
+    assert table.rows[1].data.internal == 1
+    old = table.rows[0].cells[0]
+    table.setValue([{
+        title: "Replaced"
+    }])
+    assert old.scope.disposed
+    assert table.rows.length == 1
+    result = table.getValue()
+    assert result.rows[0].title == "Replaced"
+    assert result.rows[0].pair.left == null
+    assert app.forms.length == 1
+
+scopeTests(app, form, renderer)
+    form.element.appendChild(renderer.build(form, {
+        type: "table"
+        name: "layout"
+        valueMode: "cells"
+        rowTemplate: {
+            type: "tableRowTemplate"
+            controls: [{
+                type: "tableCell"
+                name: "fixed"
+                controls: [{
+                    type: "value"
+                    name: "inner"
+                }]
+            }]
+        }
+        controls: [{
+            type: "tableCol"
+            name: "bound"
+        }, {
+            type: "tableRow"
+            controls: [{
+                type: "tableCell"
+                name: "cell"
+                controls: [{
+                    type: "value"
+                    name: "inside"
+                    value: 7
+                }]
+            }]
+        }]
+    }))
+    assert form.find("layout/cell").getValue() == 7
+    form.find("layout/cell/inside").setValue(8)
+    values = form.getValue()
+    assert values.layout.cell == 8
+    assert !("inside" in form.controls)
+    table = form.find("layout")
+    table.setValue([{
+        bound: 10
+    }])
+    assert form.find("layout/fixed").getValue() == 10
+    assert !("cell" in table.getValue())
+    assert fails(duplicateRows, table)
+    assert table.rows.length == 1
+    assert form.find("layout/fixed").getValue() == 10
+    table.setValue([])
+    assert !("fixed" in table.getValue())
+    form.element.appendChild(renderer.build(form, {
+        type: "table"
+        controls: [{
+            type: "tableRow"
+            controls: [{
+                type: "tableCell"
+                name: "flatCell"
+                controls: [{
+                    type: "value"
+                    value: 11
+                }]
+            }, {
+                type: "tableCell"
+                controls: [{
+                    type: "value"
+                    name: "flatField"
+                    value: 12
+                }]
+            }]
+        }]
+    }))
+    assert form.find("flatCell").getValue() == 11
+    values = form.getValue()
+    assert values.flatField == 12
+    last = form.owned.length - 1
+    flat = form.owned[last]
+    flat.setValue([])
+    assert !("flatCell" in form.controls)
+    assert !("flatField" in form.controls)
+    form.element.appendChild(renderer.build(form, {
+        type: "table"
+        name: "withForm"
+        valueMode: "rows"
+        controls: [{
+            type: "tableCol"
+            name: "editor"
+        }]
+        rowTemplate: {
+            type: "tableRowTemplate"
+            controls: [{
+                type: "tableCell"
+                controls: [{
+                    type: "form"
+                    controls: [{
+                        type: "value"
+                        name: "field"
+                    }]
+                }]
+            }]
+        }
+    }))
+    nested = form.find("withForm")
+    nested.addRow({
+        editor: {
+            field: "Nested"
+        }
+    })
+    assert app.forms.length == 2
+    nested.setRowValue(0, null)
+    values = nested.getValue()
+    assert values[0].editor.field == null
+    nested.setRowValue(0, {
+        editor: {
+            field: "Nested"
+        }
+    })
+    values = nested.getValue()
+    assert values[0].editor.field == "Nested"
+    nested.deleteRow(0)
+    assert app.forms.length == 1
+
+duplicateRows(table)
+    table.setValue([{
+        bound: 20
+    }, {
+        bound: 30
+    }])
+
+fileTests(app, form, renderer)
+    form.element.appendChild(renderer.build(form, {
+        type: "table"
+        name: "files"
+        valueMode: "rows"
+        controls: [{
+            type: "tableCol"
+            name: "attachment"
+        }]
+        rowTemplate: {
+            type: "tableRowTemplate"
+            controls: [{
+                type: "tableCell"
+                controls: [{
+                    type: "input"
+                    variant: "File"
+                }]
+            }]
+        }
+    }))
+    table = form.find("files")
+    table.addRow()
+    input = table.element.querySelector("input")
+    file = new File(["hello"], "hello.txt", {
+        type: "text/plain"
+    })
+    Object/defineProperty(input, "files", {
+        value: [file]
+        configurable: true
+    })
+    input.dispatchEvent(new Event("change"))
+    return chain form.prepareValue()
+      then(ignored)
+        capture table
+        capture app
+        values = table.getValue()
+        assert values[0].attachment.content == "aGVsbG8="
+        assert app.forms.length == 1

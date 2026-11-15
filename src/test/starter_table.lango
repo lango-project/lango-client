@@ -20,4 +20,15 @@ buildTable()
         width: 30
         caption: "Family name"
     })
+    table.valueMode = "rows"
+    template = new ui/TableRowTemplate()
+    field = new ui/Input("editor")
+    field.label = "Table given name"
+    template.addCell().add(field)
+    template.addCell().add(new ui/Input("editor"))
+    table.rowTemplate = template
+    ui/setValue("example", [{
+        givenName: "Savas"
+        familyName: "Alparslan"
+    }])
     return table

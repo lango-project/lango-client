@@ -1,0 +1,119 @@
+import js global Object
+import js global Reflect
+import js global Promise
+
+export class TableScope(parent)
+    properties
+        parent
+        requestForm
+        app
+        token
+        controls
+        owned
+        resources
+        disposed
+    methods
+        register(name, control)
+        unregister(control)
+        find(name)
+        getValue()
+        setValue(values)
+        prepareValue()
+        clearValidation()
+        clearResources()
+        send(url)
+        dispose()
+
+TableScope(parent)
+    @parent = parent
+    @app = parent.app
+    @requestForm = parent
+    if parent.requestForm != null
+        @requestForm = parent.requestForm
+    token = ()
+        return @requestForm.token
+    Object/defineProperty(@this, "token", {
+        get: token
+    })
+    @controls = Object/create(null)
+    @owned = []
+    @resources = []
+    @disposed = false
+
+TableScope:register(name, control)
+    if name != null
+        if !is_string(name) or name == "" or name.includes("/") or name in @controls
+            control.dispose()
+            throw "Invalid or duplicate control name: ${name}"
+        @controls[name] = control
+    @owned.add(control)
+    return control
+
+TableScope:unregister(control)
+    for Object/keys(@controls) as name
+        if @controls[name] == control
+            Reflect/deleteProperty(@controls, name)
+    index = @owned.indexOf(control)
+    if index >= 0
+        @owned.splice(index, 1)
+    return null
+
+TableScope:find(name)
+    parts = name.split("/")
+    child = @controls[parts.shift()]
+    if child == null
+        throw "Unknown control: ${name}"
+    if parts.length > 0
+        if child.find == null
+            throw "Control has no named children: ${name}"
+        return child.find(parts.join("/"))
+    return child
+
+TableScope:getValue()
+    result = Object/create(null)
+    for @controls as name: control
+        result[name] = control.getValue()
+    return result
+
+TableScope:setValue(values)
+    if !is_object(values) or is_array(values)
+        throw "Multiple cell controls require a value map"
+    for values as name: value
+        find(name).setValue(value)
+    return @this
+
+TableScope:prepareValue()
+    pending = []
+    for @owned as control
+        if control.prepareValue != null
+            ready = control.prepareValue()
+            if ready != null
+                pending.add(ready)
+    if pending.length == 0
+        return null
+    return Promise/all(pending)
+
+TableScope:clearValidation()
+    for @owned as control
+        if control.clearValidation != null
+            control.clearValidation()
+    return null
+
+TableScope:clearResources()
+    return @parent.clearResources()
+
+TableScope:send(url)
+    return @parent.send(url)
+
+TableScope:dispose()
+    if @disposed
+        return null
+    @disposed = true
+    for @owned.slice() as control
+        control.dispose()
+    for @resources as release
+        release()
+    @owned = []
+    @controls = Object/create(null)
+    @resources = []
+    return null

@@ -76,6 +76,7 @@ setup()
     source = fs/readFileSync(handlerFile, "utf8")
     source = "import \"./table\"\n    buildTable()\n${source}"
     source = source.replace("    return form", "    layout.add(buildTable())\n    return form")
+    source = source.replace("greet(input)\n    if", "greet(input)\n    assert input.example[0].givenName == \"Savas\"\n    assert input.example[0].familyName == \"Alparslan\"\n    if")
     fs/writeFileSync(handlerFile, source)
     npm(app, ["run", "build"])
     key = fs/readFileSync(path/join(app, ".lango/keys.json"), "utf8")

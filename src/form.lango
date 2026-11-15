@@ -105,7 +105,7 @@ Form:getValue()
 
 Form:prepareValue()
     pending = []
-    for @controls as name: control
+    for @owned as control
         if control.prepareValue != null
             ready = control.prepareValue()
             if ready != null

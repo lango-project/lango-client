@@ -86,6 +86,8 @@ App:checkUrl(url)
     return target
 
 App:error(form, error, code = "UiFailure", name = null)
+    if form != null and form.requestForm != null
+        form = form.requestForm
     if @disposed or form == null or form.disposed
         return null
     @renderer.reportError(form, error)
@@ -449,6 +451,18 @@ App:command(form, cmd)
     switch cmd.type
       case "values"
           form.setValue(cmd.values)
+      case "addRow"
+          form.find(cmd.name).addRow(cmd.value)
+      case "insertRow"
+          form.find(cmd.name).insertRow(cmd.beforeIndex, cmd.value)
+      case "deleteRow"
+          form.find(cmd.name).deleteRow(cmd.index)
+      case "setRowValue"
+          form.find(cmd.name).setRowValue(cmd.index, cmd.value)
+      case "setRowData"
+          form.find(cmd.name).setRowData(cmd.index, cmd.value)
+      case "setCellValue"
+          form.find(cmd.name).setCellValue(cmd.index, cmd.column, cmd.value)
       case "invalid"
           form.find(cmd.name).setInvalid(cmd.message)
       case "set"

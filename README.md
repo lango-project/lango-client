@@ -305,14 +305,15 @@ control definitions or arrays of definitions. Image accepts an HTTP(S) or image
 data URL, or base64 `content` with an image `mimeType` (default `image/png`).
 
 Cards, tables, tabs and navigation do not introduce implicit Form scopes.
-Controls inside them belong to the containing Form; explicit nested Forms keep
-their independent values and tokens. Named non-field controls contribute null.
+Controls inside them send through the containing Form; explicit nested Forms keep
+their independent values and tokens. Tables use local cell scopes and their
+valueMode controls collection; ordinary named non-field controls contribute null.
 
 Tables consume `tableCol`, one optional `tableHeader`, `tableRow`, `tableCell`
 and `tableDivider` definitions. Header rows contain native column headings.
 `rowSpan` and `colSpan` are Cell properties; spans must be integers from 1 to
-1000. Column `colSpan` uses the native column span. Numeric column widths are
-pixels; strings are CSS widths. Resizable columns support pointer dragging and
+1000. Column `colSpan` uses the native column span. Positive numeric column widths use character units (`ch`); -1 selects automatic
+width. Resizable columns support pointer dragging and
 Left/Right keys in 10-pixel steps, with a minimum width of 24 pixels per column.
 A resizable column must end at a first-row cell boundary. Row/Cell `url` sends
 the owning Form with its current token. Inner buttons, links and fields do not
@@ -592,3 +593,35 @@ values use DOM properties. Markdown uses its separate sanitization path.
 - Query/hash history policy and additional platforms remain open. The delivery
   generator currently targets same-origin Web/Bootstrap; deep-link static hosting
   and a packed generated-application browser test are implemented.
+
+
+## Table data and row commands
+
+Tables support `valueMode` (`none`, `cells`, `rows`, `mixed`), an optional
+`tableRowTemplate` definition in `rowTemplate`, and an initial `value` array.
+`values` assignments to a table replace every body row, preserving its columns,
+header and configuration. Null and [] clear the body. Row maps bind to column
+names; missing fields render empty. Without a template, cells show safe text
+(including JSON text for structured values) and contribute null when collected.
+
+Template cells map to columns by position. One control receives/returns a direct
+value; multiple named controls receive/return a map. Each cell has a local control
+scope, so repeated template field names are independent. Rows do not create
+Forms or tokens. Explicit nested Forms and asynchronous File fields remain
+supported. Metadata (`tableRow.data`, `setRowData`) stays out of DOM and form
+values. It is client-side data and must not contain server secrets.
+
+A named table scopes targets as `table/cell/control`. Static unnamed cells expose
+their named controls in the table scope; unnamed tables expose static cell names
+in their containing scope. Generated rows keep unnamed-cell controls local.
+Duplicate exposed names fail, including fixed named template cells repeated
+across rows. Failed row replacement leaves previous rows and names usable.
+Removed/replaced rows dispose their controls, nested Forms and listeners.
+
+The dispatcher accepts `addRow`, `insertRow`, `deleteRow`, `setRowValue`,
+`setRowData`, and `setCellValue`. All use `name` as the table target. Insert uses
+`beforeIndex`; other indexed commands use `index`. Cell assignment adds `column`
+(a name or definition index). Values use `value`. Indices are zero based;
+insertion at the row count appends. Full `values` commands retain their final
+position after incremental commands. See the Lango UI package
+documentation for builder examples and precise collection rules.

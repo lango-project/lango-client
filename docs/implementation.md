@@ -82,3 +82,12 @@ scope. Other controls do not inherit from the layout Container in the UI API.
 The HTML `#app` mount has no `.container` class; applications select their own
 width policy. The generated UI template supplies a bounded layout Container.
 The existing 48rem Row/Col and screen-header boundary is unchanged.
+
+
+Table data binding is implemented: optional row templates, safe text fallback,
+independent cell control scopes, none/cells/rows/mixed value collection, separate
+row metadata, asynchronous field preparation, and incremental row/cell commands.
+Full replacement stages rows before publishing names; errors preserve the previous
+rows. Replaced rows release nested Forms and controls. Chromium tests cover the
+value and lifecycle contracts; the packed starter sends template-edited row values
+through real UI middleware without a compiler installed at runtime.

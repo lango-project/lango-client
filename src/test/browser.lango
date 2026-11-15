@@ -3,6 +3,7 @@ import js "node:http" as http
 import js "node:fs" as fs
 import js "node:path" as path
 import js global Promise
+import js global Object
 import "./forms_browser"
     alias formDefinition = definition()
     alias formReply = reply(url)
@@ -144,6 +145,20 @@ browserError(error)
     println("Browser error: ${error}")
 
 serve(req, res)
+    if req.url == "/table-test"
+        res.setHeader("Content-Type", "text/html")
+        html = fs/readFileSync("dist/index.html", "utf8")
+        res.end(html.replace('<script type="module" src="/boot.mjs"></script>', ""))
+        return null
+    if req.url.startsWith("/test-table/")
+        testFile = path/join(".test-output/table-program", req.url.slice(12))
+        if !fs/existsSync(testFile) or !fs/statSync(testFile).isFile()
+            res.writeHead(404)
+            res.end()
+            return null
+        res.setHeader("Content-Type", "text/javascript")
+        res.end(fs/readFileSync(testFile))
+        return null
     if req.method == "POST"
         body = {
             text: ""
@@ -725,6 +740,62 @@ test "advanced inputs preserve date ranges, exact numbers, OTP and binary files"
         capture server
         capture state
         server.closeAllConnections()
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+
+test "tables render data, isolate row templates, collect values and clean replaced scopes"
+    server = http/createServer(serve)
+    state = {}
+    errorHandler = browserError
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(browser)
+        capture state
+        Object/assign(state, {
+            browser: browser
+        })
+        return browser.newPage()
+      then(page)
+        capture errorHandler
+        capture state
+        capture server
+        Object/assign(state, {
+            page: page
+        })
+        page.on("pageerror", errorHandler)
+        return page.goto("http://127.0.0.1:${server.address().port}/table-test")
+      then(ignored)
+        capture state
+        return state.page.addScriptTag({
+            type: "module"
+            url: "/test-table/main.mjs"
+        })
+      then(ignored)
+        capture state
+        return state.page.waitForFunction("document.body.hasAttribute('data-table-result')")
+      then(ignored)
+        capture state
+        return state.page.locator("body").getAttribute("data-table-result")
+      then(result)
+        capture state
+        if result != "passed"
+            return chain state.page.locator("body").textContent()
+              then(message)
+                throw message
+      finally
+        capture state
+        capture server
         server.close()
         if state.browser != null
             return state.browser.close()

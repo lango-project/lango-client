@@ -3,8 +3,18 @@ import "./dimensions"
     measure(value, unit)
 import js global document
 import js global Number
+import js global Math
+import js global Object
+import js global Reflect
+import js global JSON
+import js global Promise
+import js global structuredClone
+import "./table_scope"
+    class TableScope
 import "./control"
     class Control
+import "./form"
+    class Form
 import "./templates"
     cloneMarkup(name, xml)
 import "./content"
@@ -34,141 +44,440 @@ columnWidth(value)
     return measure(value, "ch")
 
 export class Table(form, props, renderer) : Control
+    properties
+        rows
+        columns
+    methods
+        find(name)
+        getValue()
+        prepareValue()
+        clearValidation()
+        setValue(values)
+        addRow(value = null)
+        insertRow(beforeIndex, value = null)
+        deleteRow(index)
+        setRowValue(index, value)
+        setRowData(index, value)
+        setCellValue(index, column, value)
+        createRow(value)
+        names(rows, replace = false)
+        publish(names)
+        resize(rows)
+        dispose()
 
 Table(form, props, renderer)
     super(form, props, cloneMarkup("table", <div class="table-responsive"><table class="table"><colgroup></colgroup><tbody></tbody></table></div>))
-    table = @element.firstElementChild
+    @renderer = renderer
+    @props = props
+    @building = true
+    @mode = props.valueMode
+    if @mode == null
+        @mode = "none"
+    modes = ["none", "cells", "rows", "mixed"]
+    if !modes.includes(@mode)
+        throw "Table valueMode must be none, cells, rows or mixed"
+    @layout = new TableScope(form)
+    @lookup = new TableScope(form)
+    @rows = []
+    @columns = []
+    @header = null
+    @aliases = Object/create(null)
+    @table = @element.firstElementChild
+    @body = @table.lastElementChild
+    @template = props.rowTemplate
+    if @template != null and @template.type != "tableRowTemplate"
+        throw "Table rowTemplate requires a TableRowTemplate"
+    table = @table
     group = table.firstElementChild
-    body = table.lastElementChild
-    columns = []
     headings = []
     hasCaptions = false
-    rows = []
-    dividers = []
-    width = 1
-    header = null
-    if props.stripedRows == true
-        table.classList.add("table-striped")
-    if props.stripedColumns == true
-        table.classList.add("table-striped-columns")
-    if props.hoverableRows == true
-        table.classList.add("table-hover")
-    if props.small == true
-        table.classList.add("table-sm")
-    if props.border != null and props.border != false
-        table.classList.add("table-bordered")
-        if is_object(props.border)
-            if props.border.color != null
-                table.style.setProperty("--bs-table-border-color", props.border.color)
-            if props.border.width != null
-                table.style.setProperty("--bs-border-width", "${props.border.width}px")
-    if props.caption != null
-        caption = document/createElement("caption")
-        appendContent(form, caption, props.caption, renderer)
-        table.prepend(caption)
-    if props.aria != null
-        for props.aria as name: value
-            table.setAttribute("aria-${name}", value)
-    if props.controls != null
-        for props.controls as definition
-            switch definition.type
-              case "tableCol"
-                  col = new TableCol(form, definition)
-                  form.register(definition.name, col)
-                  columns.add(col)
-                  headings.add({
-                      type: "tableCell"
-                      colSpan: definition.colSpan
-                      controls: definition.caption
-                  })
-                  if definition.caption != null
-                      hasCaptions = true
-                  group.appendChild(col.element)
-              case "tableHeader"
-                  if header != null
-                      throw "Table accepts one TableHeader"
-                  header = new TableHeader(form, definition, renderer)
-                  form.register(definition.name, header)
-                  table.insertBefore(header.element, body)
-                  for header.rows as heading
-                      rows.add(heading)
-              case "tableRow"
-                  row = new TableRow(form, definition, renderer, false)
-                  form.register(definition.name, row)
-                  rows.add(row)
-                  body.appendChild(row.element)
-              case "tableDivider"
-                  divider = new TableDivider(form, definition)
-                  form.register(definition.name, divider)
-                  dividers.add(divider)
-                  body.appendChild(divider.element)
+    try
+        if props.stripedRows == true
+            table.classList.add("table-striped")
+        if props.stripedColumns == true
+            table.classList.add("table-striped-columns")
+        if props.hoverableRows == true
+            table.classList.add("table-hover")
+        if props.small == true
+            table.classList.add("table-sm")
+        if props.border != null and props.border != false
+            table.classList.add("table-bordered")
+            if is_object(props.border)
+                if props.border.color != null
+                    table.style.setProperty("--bs-table-border-color", props.border.color)
+                if props.border.width != null
+                    table.style.setProperty("--bs-border-width", "${props.border.width}px")
+        if props.caption != null
+            caption = document/createElement("caption")
+            appendContent(@layout, caption, props.caption, renderer)
+            table.prepend(caption)
+        if props.aria != null
+            for props.aria as name: value
+                table.setAttribute("aria-${name}", value)
+        if props.controls != null
+            for props.controls as definition
+                switch definition.type
+                  case "tableCol"
+                      col = new TableCol(@layout, definition)
+                      @layout.register(null, col)
+                      col.name = definition.name
+                      if col.name != null
+                          for @columns as previous
+                              if previous.name == col.name
+                                  throw "Duplicate column name: ${col.name}"
+                      @columns.add(col)
+                      headings.add({
+                          type: "tableCell"
+                          colSpan: definition.colSpan
+                          controls: definition.caption
+                      })
+                      if definition.caption != null
+                          hasCaptions = true
+                      group.appendChild(col.element)
+                  case "tableHeader"
+                      if @header != null
+                          throw "Table accepts one TableHeader"
+                      @header = new TableHeader(@layout, definition, renderer)
+                      @layout.register(definition.name, @header)
+                      table.insertBefore(@header.element, @body)
+                  case "tableRow"
+                      row = new TableRow(form, definition, renderer, false)
+                      @rows.add(row)
+                      @body.appendChild(row.element)
+                  case "tableDivider"
+                      divider = new TableDivider(@layout, definition)
+                      @layout.register(definition.name, divider)
+                      @body.appendChild(divider.element)
+                  else
+                      throw "Unsupported Table child: ${definition.type}"
+        if @header == null and hasCaptions
+            generated = {
+                controls: [{
+                    type: "tableRow"
+                    controls: headings
+                }]
+            }
+            @header = new TableHeader(@layout, generated, renderer)
+            @layout.register(null, @header)
+            table.insertBefore(@header.element, @body)
+        width = 1
+        for @rows as row
+            width = Math/max(width, row.width)
+        for @layout.owned as child
+            if is_kindof(child, TableDivider)
+                applySpan(child.element.firstElementChild, "colspan", width)
+        if props.value != null
+            setValue(props.value)
+          else
+              publish(names(@rows))
+              resize(@rows)
+        @building = false
+    catch error
+        dispose()
+        throw error
+
+Table:find(name)
+    return @lookup.find(name)
+
+Table:names(rows, replace = false)
+    result = Object/create(null)
+    for @layout.controls as name: control
+        if !replace or !is_kindof(control, TableDivider)
+            addName(result, name, control)
+    sources = rows.slice()
+    if @header != null
+        for @header.rows as row
+            sources.add(row)
+    for sources as row
+        addName(result, row.name, row)
+        for row.cells as cell
+            if cell.name != null
+                addName(result, cell.name, cell)
               else
-                  throw "Unsupported Table child: ${definition.type}"
-    if header == null and hasCaptions
-        generated = {
-            controls: [{
-                type: "tableRow"
-                controls: headings
-            }]
-        }
-        header = new TableHeader(form, generated, renderer)
-        table.insertBefore(header.element, body)
-        for header.rows as heading
-            rows.unshift(heading)
+                  if !row.generated
+                      for cell.scope.controls as name: control
+                          addName(result, name, control)
+    return result
+
+Table:publish(names)
+    if @props.name == null
+        for names as name: control
+            if name in @form.controls and @form.controls[name] != @aliases[name]
+                throw "Invalid or duplicate control name: ${name}"
+        for @aliases as name: control
+            if @form.controls[name] == control
+                Reflect/deleteProperty(@form.controls, name)
+        for names as name: control
+            @form.controls[name] = control
+        @aliases = names
+    @lookup.controls = names
+    return null
+
+Table:getValue()
+    if @mode == "none"
+        return null
+    if @mode == "cells"
+        return @lookup.getValue()
+    rows = []
+    for @rows as row
+        rows.add(row.getRowValue(@columns))
+    if @mode == "rows"
+        return rows
+    return {
+        cells: @lookup.getValue()
+        rows: rows
+    }
+
+Table:prepareValue()
+    pending = []
+    ready = @layout.prepareValue()
+    if ready != null
+        pending.add(ready)
+    for @rows as row
+        ready = row.prepareValue()
+        if ready != null
+            pending.add(ready)
+    return allReady(pending)
+
+Table:clearValidation()
+    super.clearValidation()
+    if @layout != null
+        @layout.clearValidation()
+    if @rows != null
+        for @rows as row
+            row.clearValidation()
+    return null
+
+Table:createRow(value)
+    rowValue(value)
+    definition = null
+    if @template != null
+        definition = structuredClone(@template)
+      else
+          cells = []
+          for @columns as column
+              cells.add({
+                  type: "tableCell"
+                  colSpan: column.span
+              })
+          definition = {
+              controls: cells
+          }
+    row = new TableRow(@form, definition, @renderer, false)
+    row.generated = true
+    try
+        row.setRowValue(value, @columns)
+    catch error
+        row.dispose()
+        throw error
+    return row
+
+Table:setValue(values)
+    if values == null
+        values = []
+    if !is_array(values)
+        throw "Table value must be an array of row maps"
+    staged = []
+    try
+        for values as value
+            staged.add(createRow(value))
+        next = names(staged, true)
+        validateBoundaries(@header, staged, @columns)
+        publish(next)
+    catch error
+        for staged as row
+            row.dispose()
+        throw error
+    if !@building
+        @form.clearResources()
+    for @rows as row
+        row.dispose()
+    @rows = staged
+    @body.replaceChildren()
+    for @layout.owned.slice() as child
+        if is_kindof(child, TableDivider)
+            @layout.unregister(child)
+            child.dispose()
+    for staged as row
+        @body.appendChild(row.element)
+    resize(staged)
+    return @this
+
+Table:addRow(value = null)
+    return insertRow(@rows.length, value)
+
+Table:insertRow(beforeIndex, value = null)
+    tableIndex(beforeIndex, @rows.length, true)
+    row = createRow(value)
+    staged = @rows.slice()
+    staged.splice(beforeIndex, 0, row)
+    try
+        next = names(staged)
+        validateBoundaries(@header, staged, @columns)
+        publish(next)
+    catch error
+        row.dispose()
+        throw error
+    @form.clearResources()
+    anchor = null
+    if beforeIndex < @rows.length
+        anchor = @rows[beforeIndex].element
+    @body.insertBefore(row.element, anchor)
+    @rows = staged
+    resize(staged)
+    return @this
+
+Table:deleteRow(index)
+    tableIndex(index, @rows.length)
+    staged = @rows.slice()
+    row = staged.splice(index, 1)[0]
+    validateBoundaries(@header, staged, @columns)
+    publish(names(staged))
+    @form.clearResources()
+    row.dispose()
+    row.element.remove()
+    @rows = staged
+    resize(staged)
+    return @this
+
+Table:setRowValue(index, value)
+    tableIndex(index, @rows.length)
+    @rows[index].setRowValue(value, @columns)
+    return @this
+
+Table:setRowData(index, value)
+    tableIndex(index, @rows.length)
+    row = @rows[index]
+    row.data = structuredClone(value)
+    return @this
+
+Table:setCellValue(index, column, value)
+    tableIndex(index, @rows.length)
+    selected = columnIndex(column, @columns)
+    row = @rows[index]
+    tableIndex(selected, row.cells.length)
+    row.cells[selected].setValue(value)
+    return @this
+
+Table:resize(rows)
+    width = 1
     for rows as row
-        if row.width > width
-            width = row.width
-    for dividers as divider
-        applySpan(divider.element.firstElementChild, "colspan", width)
-    if rows.length > 0
-        first = rows[0]
+        width = Math/max(width, row.width)
+    if @header != null
+        for @header.rows as row
+            width = Math/max(width, row.width)
+    for @layout.owned as child
+        if is_kindof(child, TableDivider)
+            applySpan(child.element.firstElementChild, "colspan", width)
+    for @columns as col
+        col.detach()
+    first = validateBoundaries(@header, rows, @columns)
+    if first != null
         offset = 0
-        for columns as col
+        for @columns as col
             offset = offset + col.span
             if col.resize
-                anchor = first.boundary(offset)
-                if anchor == null
-                    throw "Resizable column must end at a first-row cell boundary"
-                col.attach(anchor, table)
+                col.attach(first.boundary(offset), @table)
+    return null
+
+Table:dispose()
+    if @aliases != null
+        for @aliases as name: control
+            if @form.controls[name] == control
+                Reflect/deleteProperty(@form.controls, name)
+        @aliases = Object/create(null)
+    if @rows != null
+        for @rows as row
+            row.dispose()
+        @rows = []
+    if @layout != null
+        @layout.dispose()
+    return super.dispose()
 
 export class TableHeader(form, props, renderer) : Control
     properties
         rows
+    methods
+        prepareValue()
+        clearValidation()
+        dispose()
 
 TableHeader(form, props, renderer)
     super(form, props, cloneMarkup("table-header", <thead></thead>))
     decorate(@this, props)
     @rows = []
-    if props.controls != null
-        for props.controls as definition
-            if definition.type != "tableRow"
-                throw "TableHeader accepts TableRow definitions"
-            row = new TableRow(form, definition, renderer, true)
-            form.register(definition.name, row)
-            @rows.add(row)
-            @element.appendChild(row.element)
+    try
+        if props.controls != null
+            for props.controls as definition
+                if definition.type != "tableRow"
+                    throw "TableHeader accepts TableRow definitions"
+                row = new TableRow(form, definition, renderer, true)
+                @rows.add(row)
+                @element.appendChild(row.element)
+    catch error
+        dispose()
+        throw error
+
+TableHeader:prepareValue()
+    pending = []
+    for @rows as row
+        ready = row.prepareValue()
+        if ready != null
+            pending.add(ready)
+    return allReady(pending)
+
+TableHeader:clearValidation()
+    super.clearValidation()
+    if @rows != null
+        for @rows as row
+            row.clearValidation()
+    return null
+
+TableHeader:dispose()
+    for @rows as row
+        row.dispose()
+    @rows = []
+    return super.dispose()
 
 export class TableRow(form, props, renderer, heading) : Control
     properties
+        name
+        data
+        generated
         width
+        cells
     methods
         boundary(column)
+        setRowValue(value, columns)
+        getRowValue(columns)
+        getValue()
+        prepareValue()
+        clearValidation()
+        dispose()
 
 TableRow(form, props, renderer, heading)
     super(form, props, cloneMarkup("table-row", <tr></tr>))
     decorate(@this, props)
+    @name = props.name
+    @data = structuredClone(props.data)
+    @generated = false
     @width = 0
     @cells = []
-    if props.controls != null
-        for props.controls as definition
-            if definition.type != "tableCell"
-                throw "TableRow accepts TableCell definitions"
-            cell = new TableCell(form, definition, renderer, heading)
-            form.register(definition.name, cell)
-            @cells.add(cell)
-            @width = @width + cell.element.colSpan
-            @element.appendChild(cell.element)
-    bindAction(@this, @element, props.url)
+    @scope = new TableScope(form)
+    try
+        if props.controls != null
+            for props.controls as definition
+                if definition.type != "tableCell"
+                    throw "TableRow accepts TableCell definitions"
+                cell = new TableCell(@scope, definition, renderer, heading)
+                @scope.register(definition.name, cell)
+                @cells.add(cell)
+                @width = @width + cell.element.colSpan
+                @element.appendChild(cell.element)
+        bindAction(@this, @element, props.url)
+    catch error
+        dispose()
+        throw error
 
 TableRow:boundary(column)
     offset = 0
@@ -178,24 +487,131 @@ TableRow:boundary(column)
             return cell.element
     return null
 
+TableRow:setRowValue(value, columns)
+    rowValue(value)
+    for @cells as index: cell
+        name = cell.name
+        if index < columns.length
+            name = columns[index].name
+        field = null
+        if value != null and name != null and Object/hasOwn(value, name)
+            field = value[name]
+        cell.setValue(field)
+    return @this
+
+TableRow:getRowValue(columns)
+    result = Object/create(null)
+    for @cells as index: cell
+        name = cell.name
+        if index < columns.length
+            name = columns[index].name
+        if name != null
+            if name in result
+                throw "Duplicate row value name: ${name}"
+            result[name] = cell.getValue()
+    return result
+
+TableRow:getValue()
+    return @scope.getValue()
+
+TableRow:prepareValue()
+    return @scope.prepareValue()
+
+TableRow:clearValidation()
+    super.clearValidation()
+    if @scope != null
+        @scope.clearValidation()
+    return null
+
+TableRow:dispose()
+    if @scope != null
+        @scope.dispose()
+    return super.dispose()
+
 export class TableCell(form, props, renderer, heading) : Control
+    properties
+        name
+        scope
+    methods
+        find(name)
+        getValue()
+        setValue(value)
+        prepareValue()
+        clearValidation()
+        dispose()
 
 TableCell(form, props, renderer, heading)
     super(form, props, cellElement(heading))
-    applySpan(@element, "colspan", props.colSpan)
-    applySpan(@element, "rowspan", props.rowSpan)
-    if props.verticalAlignment != null
-        @element.style.verticalAlign = props.verticalAlignment
-    if props.horizontalAlignment != null
-        @element.style.textAlign = props.horizontalAlignment
-    appendContent(form, @element, props.controls, renderer)
-    if props.style != null
-        for props.style as name: value
-            @element.style.setProperty(name, value)
-    if props.aria != null
-        for props.aria as name: value
-            @element.setAttribute("aria-${name}", value)
-    bindAction(@this, @element, props.url)
+    @name = props.name
+    @scope = new TableScope(form)
+    try
+        applySpan(@element, "colspan", props.colSpan)
+        applySpan(@element, "rowspan", props.rowSpan)
+        if props.verticalAlignment != null
+            @element.style.verticalAlign = props.verticalAlignment
+        if props.horizontalAlignment != null
+            @element.style.textAlign = props.horizontalAlignment
+        appendContent(@scope, @element, props.controls, renderer)
+        decorate(@this, props)
+        bindAction(@this, @element, props.url)
+    catch error
+        dispose()
+        throw error
+
+TableCell:find(name)
+    return @scope.find(name)
+
+TableCell:getValue()
+    if @scope.owned.length == 0
+        return null
+    if @scope.owned.length == 1
+        return @scope.owned[0].getValue()
+    return @scope.getValue()
+
+TableCell:setValue(value)
+    if @scope.owned.length == 0
+        text = ""
+        if value != null
+            if is_object(value) or is_array(value)
+                text = JSON/stringify(value)
+              else
+                  text = "${value}"
+        handle = @element.querySelector(":scope > .lango-col-resize")
+        @element.textContent = text
+        if handle != null
+            @element.appendChild(handle)
+      else
+          if value == null
+              for @scope.owned as control
+                  clearValue(control)
+            else
+                if @scope.owned.length == 1
+                    @scope.owned[0].setValue(value)
+                  else
+                      @scope.setValue(value)
+    return @this
+
+TableCell:prepareValue()
+    return @scope.prepareValue()
+
+TableCell:clearValidation()
+    super.clearValidation()
+    if @scope != null
+        @scope.clearValidation()
+    return null
+
+TableCell:dispose()
+    if @scope != null
+        @scope.dispose()
+    return super.dispose()
+
+clearValue(control)
+    if is_kindof(control, Form)
+        for control.owned as child
+            clearValue(child)
+      else
+          control.setValue(null)
+    return null
 
 cellElement(heading)
     if heading
@@ -208,12 +624,63 @@ TableDivider(form, props)
     super(form, props, cloneMarkup("table-divider", <tr class="lango-table-divider" aria-hidden="true"><td><hr /></td></tr>))
     decorate(@this, props)
 
+addName(names, name, control)
+    if name == null
+        return null
+    if !is_string(name) or name == "" or name.includes("/") or name in names
+        throw "Invalid or duplicate control name: ${name}"
+    names[name] = control
+    return null
+
+rowValue(value)
+    if value != null and (!is_object(value) or is_array(value))
+        throw "Table row value must be a map or null"
+    return value
+
+tableIndex(index, length, insertion = false)
+    limit = length - 1
+    if insertion
+        limit = length
+    if !is_number(index) or !Number/isInteger(index) or index < 0 or index > limit
+        throw "Table index out of range: ${index}"
+    return index
+
+columnIndex(column, columns)
+    if is_string(column)
+        for columns as index: col
+            if col.name == column
+                return index
+        throw "Unknown table column: ${column}"
+    return tableIndex(column, columns.length)
+
+validateBoundaries(header, rows, columns)
+    first = null
+    if header != null and header.rows.length > 0
+        first = header.rows[0]
+      else
+          if rows.length > 0
+              first = rows[0]
+    if first != null
+        offset = 0
+        for columns as col
+            offset = offset + col.span
+            if col.resize and first.boundary(offset) == null
+                throw "Resizable column must end at a first-row cell boundary"
+    return first
+
+allReady(pending)
+    if pending.length == 0
+        return null
+    return Promise/all(pending)
+
 export class TableCol(form, props) : Control
     properties
+        name
         span
         resize
     methods
         attach(cell, table)
+        detach()
         size(width)
 
 TableCol(form, props)
@@ -311,3 +778,9 @@ TableCol:attach(cell, table)
         handle.removeEventListener("keydown", key)
         handle.remove()
     @release.add(release)
+
+TableCol:detach()
+    for @release as release
+        release()
+    @release = []
+    return null

@@ -14,6 +14,13 @@ main(args)
         command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/starter.lango", "--build-dir", ".test-output/starter"]
     if args[0] == "install"
         command = ["node_modules/playwright/cli.js", "install", "chromium", "--only-shell"]
+    if args[0] == "test"
+        compiled = child/spawnSync(process.execPath, ["node_modules/@lango-project/lango-js/src/cli.mjs", "build", "src/test/table_program.lango", "--out", ".test-output/table-program/main.mjs", "--target", "browser"], {
+            env: env
+            stdio: "inherit"
+        })
+        if compiled.status != 0
+            throw "Table browser program could not compile"
     result = child/spawnSync(process.execPath, command, {
         env: env
         stdio: "inherit"

@@ -1,3 +1,5 @@
+import "../table_scope"
+    class TableScope
 import js "node:assert/strict" as check
 import js global Promise
 import js global Object
@@ -402,3 +404,36 @@ test "startup preserves saved tokens on other failures and ordinary requests nev
             assert ordinary.state.token == "obsolete-token"
             assert ordinary.state.removed == 0
             assert ordinary.state.calls == 1
+
+
+test "table scopes follow renewed tokens without creating forms"
+    app = new App({}, {})
+    form = new Form(app)
+    form.token = "before"
+    scope = new TableScope(form)
+    cell = new TableScope(scope)
+    cell.register("field", value(3))
+    assert cell.requestForm == form
+    assert cell.token == "before"
+    form.token = "after"
+    assert cell.token == "after"
+    assert app.forms.length == 1
+    assert cell.getValue().field == 3
+    cell.dispose()
+    assert app.forms.length == 1
+    assert Object/keys(cell.controls).length == 0
+
+
+test "table scope errors report through the containing request form"
+    shown = []
+    report = (form, problem)
+        capture shown
+        shown.add(form)
+    app = new App({}, {
+        reportError: report
+    })
+    form = new Form(app)
+    scope = new TableScope(form)
+    app.error(scope, "Example")
+    assert shown.length == 1
+    assert shown[0] == form
