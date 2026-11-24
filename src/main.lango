@@ -22,6 +22,7 @@ start()
     catch error
         storage = storage
     app = new App({
+        reload: reload
         storage: storage
         mount: document/querySelector("#app")
         location: window.location
@@ -58,6 +59,12 @@ start()
         capture app
         if app.reporter != null
             app.reporter.capture("promise", "UnhandledRejection", null, app.root)
+    changed = (event)
+        capture app
+        capture storage
+        if event.key == "lango.authChange" and event.storageArea == storage
+            app.externalAuthentication(event.newValue)
+    window.addEventListener("storage", changed)
     document/addEventListener("click", click)
     window.addEventListener("popstate", pop)
     window.addEventListener("error", windowError)
@@ -66,10 +73,12 @@ start()
       then(ignored)
         capture app
         release = ()
+            capture changed
             capture click
             capture pop
             capture windowError
             capture rejection
+            window.removeEventListener("storage", changed)
             document/removeEventListener("click", click)
             window.removeEventListener("popstate", pop)
             window.removeEventListener("error", windowError)
@@ -79,10 +88,12 @@ start()
         return app
       catch(error)
         capture app
+        capture changed
         capture click
         capture pop
         capture windowError
         capture rejection
+        window.removeEventListener("storage", changed)
         document/removeEventListener("click", click)
         window.removeEventListener("popstate", pop)
         window.removeEventListener("error", windowError)
@@ -116,3 +127,7 @@ screenMode()
     if media.matches
         return "wide"
     return "narrow"
+
+reload()
+    window.location.reload()
+    return null

@@ -437,3 +437,265 @@ test "table scope errors report through the containing request form"
     app.error(scope, "Example")
     assert shown.length == 1
     assert shown[0] == form
+
+loginReply(status, body, token = null, challenge = false)
+    header = (name)
+        capture token
+        capture challenge
+        if name == "x-lango-token"
+            return token
+        if name == "x-lango-need-login" and challenge
+            return "1"
+        return null
+    json = ()
+        capture body
+        return Promise/resolve(body)
+    return {
+        ok: status >= 200 and status < 300
+        status: status
+        headers: {
+            get: header
+        }
+        json: json
+    }
+
+loginFixture(mode = "ok")
+    state = {
+        calls: []
+        attempts: 0
+        closed: 0
+        mode: mode
+        shown: Promise/withResolvers()
+        loginForm: null
+    }
+    fetch = (url, options)
+        capture state
+        state.calls.add({
+            url: url
+            body: options.body
+            headers: options.headers
+        })
+        if url == "/configure"
+            return Promise/resolve(loginReply(200, {
+                needLoginUrl: "/events/sign-in"
+            }, "old"))
+        if url == "/events/sign-in"
+            return Promise/resolve(loginReply(200, {
+                view: {
+                    type: "form"
+                }
+            }, "old"))
+        if url == "/confirm"
+            userId = "alice"
+            if state.mode == "switch"
+                userId = "bob"
+            return Promise/resolve(loginReply(200, {
+                cmds: [{
+                    type: "loginSatisfied"
+                    userId: userId
+                }]
+            }, "fresh"))
+        state.attempts = state.attempts + 1
+        if state.mode == "network"
+            return Promise/reject("Connection lost")
+        if state.mode == "forbidden"
+            return Promise/resolve(loginReply(403, {
+                error: "Forbidden"
+            }))
+        if state.attempts == 1 or state.mode == "repeat" or (state.mode == "parallel" and options.headers.Authorization == "Bearer old")
+            return Promise/resolve(loginReply(403, {
+                error: "ReauthenticationRequired"
+                needLogin: {
+                    reason: "ReauthenticationRequired"
+                    policy: "admin"
+                    reauthSeconds: 300
+                    userId: "alice"
+                }
+            }, null, true))
+        return Promise/resolve(loginReply(200, {}, "result"))
+    open = (form, cancel)
+        capture state
+        Object/assign(state, {
+            loginForm: form
+        })
+        release = ()
+            capture state
+            state.closed = state.closed + 1
+        return release
+    show = (form, view)
+        capture state
+        state.shown.resolve(form)
+    app = new App({
+        location: {
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        storage: {
+            setItem: discard
+        }
+        fetch: fetch
+    }, {
+        waiting: discard
+        openLogin: open
+        show: show
+    })
+    form = new Form(app, null, "old")
+    form.register("amount", value(12))
+    return {
+        app: app
+        form: form
+        state: state
+    }
+
+configureLogin(fixture)
+    return chain fixture.app.request("/configure", {}, null)
+      then(packet)
+        capture fixture
+        fixture.app.acceptEvents(packet.body)
+        return fixture
+
+test "needLogin renders separately and replays the original payload once with the new token"
+    fixture = loginFixture()
+    return chain configureLogin(fixture)
+      then(ignored)
+        capture fixture
+        pending = fixture.form.send("/protected")
+        return chain fixture.state.shown.promise
+          then(scope)
+            capture fixture
+            fixture.form.find("amount").setValue(99)
+            return scope.send("/confirm")
+          then(ignored)
+            capture pending
+            return pending
+      then(ignored)
+        capture fixture
+        calls = fixture.state.calls
+        assert calls.length == 5
+        assert calls[1].body == calls[4].body
+        assert from_json(calls[4].body).amount == 12
+        assert calls[4].headers.Authorization == "Bearer fresh"
+        assert calls[4].headers["X-Lango-Expected-User"] == to_json("alice")
+        assert fixture.form.token == "result"
+        assert fixture.state.closed == 1
+        assert fixture.app.forms.length == 1
+
+test "login cancellation drops the pending request and releases the queue"
+    fixture = loginFixture()
+    return chain configureLogin(fixture)
+      then(ignored)
+        capture fixture
+        pending = chain fixture.form.send("/protected")
+          catch(problem)
+            return problem
+        return chain fixture.state.shown.promise
+          then(scope)
+            capture fixture
+            capture pending
+            fixture.app.cancelLogin()
+            return pending
+      then(problem)
+        capture fixture
+        assert problem == "LoginCancelled"
+        assert fixture.state.attempts == 1
+        assert fixture.state.closed == 1
+        return fixture.form.send("/next")
+
+test "account changes and repeated challenges do not loop or execute the original request again"
+    return chain rejectLoginMode("switch", "IdentityChanged", 1)
+      then(ignored)
+        return rejectLoginMode("repeat", "HTTP 403", 2)
+
+rejectLoginMode(mode, expected, attempts)
+    fixture = loginFixture(mode)
+    return chain configureLogin(fixture)
+      then(ignored)
+        capture fixture
+        pending = chain fixture.form.send("/protected")
+          catch(problem)
+            return problem
+        return chain fixture.state.shown.promise
+          then(scope)
+            return scope.send("/confirm")
+          then(ignored)
+            capture pending
+            return pending
+      then(problem)
+        capture fixture
+        capture expected
+        capture attempts
+        assert problem == expected
+        assert fixture.state.attempts == attempts
+        if expected == "IdentityChanged"
+            assert fixture.form.stale
+        assert fixture.state.closed == 1
+
+test "ordinary forbidden and network errors never request login or retry"
+    return chain ordinaryFailure("network")
+      then(ignored)
+        return ordinaryFailure("forbidden")
+
+ordinaryFailure(mode)
+    fixture = loginFixture(mode)
+    return chain configureLogin(fixture)
+      then(ignored)
+        capture fixture
+        return chain fixture.form.send("/protected")
+          catch(problem)
+            return problem
+      then(problem)
+        capture fixture
+        assert fixture.state.calls.length == 2
+        assert fixture.state.loginForm == null
+        assert problem != null
+
+test "concurrent challenges with the same token share a single login and retain independent inputs"
+    fixture = loginFixture("parallel")
+    second = new Form(fixture.app, null, "old")
+    second.register("amount", value(42))
+    return chain configureLogin(fixture)
+      then(ignored)
+        capture fixture
+        capture second
+        firstSend = fixture.form.send("/one")
+        secondSend = second.send("/two")
+        return chain fixture.state.shown.promise
+          then(scope)
+            return scope.send("/confirm")
+          then(ignored)
+            capture firstSend
+            capture secondSend
+            return Promise/all([firstSend, secondSend])
+      then(ignored)
+        capture fixture
+        calls = fixture.state.calls
+        loginCount = 0
+        replayValues = []
+        for calls as call
+            if call.url == "/events/sign-in"
+                loginCount = loginCount + 1
+            if call.headers.Authorization == "Bearer fresh"
+                replayValues.add(from_json(call.body).amount)
+        assert loginCount == 1 and fixture.state.closed == 1
+        assert replayValues.length == 2
+        assert replayValues.includes(12) and replayValues.includes(42)
+
+test "disposing the challenged form cancels login without replay"
+    fixture = loginFixture()
+    return chain configureLogin(fixture)
+      then(ignored)
+        capture fixture
+        pending = chain fixture.form.send("/protected")
+          catch(problem)
+            return problem
+        return chain fixture.state.shown.promise
+          then(scope)
+            capture fixture
+            capture pending
+            fixture.form.dispose()
+            return pending
+      then(problem)
+        capture fixture
+        assert problem == "LoginCancelled"
+        assert fixture.state.attempts == 1
+        assert fixture.app.forms.length == 0

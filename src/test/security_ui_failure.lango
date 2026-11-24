@@ -1,0 +1,19 @@
+import js "@lango-project/lango-ui" as ui
+import js global Date
+
+export invalidView(input)
+
+invalidView(input)
+    context principal
+    context token
+    row = SQL
+        insert into application_notes (id, user_id, client_id, body, created_at)
+        values ('representation-must-rollback', :user, :client, 'must not persist', :now)
+    row.user = principal.userId
+    row.client = token.clientId?
+    row.now = Date/now()
+    row.execute()
+    ui/changeCaption("status", "Must not publish")
+    view = new ui/Form()
+    view.inheritedNames = "invalid-for-serialization"
+    return view

@@ -41,7 +41,7 @@ Heartbeat:observe(token)
 Heartbeat:live()
     result = []
     for @app.forms as form
-        if !form.disposed and form.token != null and !result.includes(form.token)
+        if !form.disposed and !form.stale and form.token != null and !result.includes(form.token)
             result.add(form.token)
     return result
 
@@ -152,7 +152,7 @@ Heartbeat:apply(tokens, results)
         seen.add(item.previous)
     for results as item
         for @app.forms.slice() as form
-            if !form.disposed and form.token == item.previous
+            if !form.disposed and !form.stale and form.token == item.previous
                 if item.status == 200
                     form.setToken(item.token)
                   else

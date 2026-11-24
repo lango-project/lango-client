@@ -12,6 +12,8 @@ main(args)
     command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/browser.lango", "--build-dir", ".test-output/browser"]
     if args[0] == "starter"
         command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/starter.lango", "--build-dir", ".test-output/starter"]
+    if args[0] == "security"
+        command = ["node_modules/@lango-project/lango-js/src/cli.mjs", "test", "src/test/security_ui.lango", "--build-dir", ".test-output/security-ui"]
     if args[0] == "install"
         command = ["node_modules/playwright/cli.js", "install", "chromium", "--only-shell"]
     if args[0] == "test"
@@ -21,6 +23,8 @@ main(args)
         })
         if compiled.status != 0
             throw "Table browser program could not compile"
+    if process.env.LANGO_TEST_COMPILER != null and args[0] != "install"
+        command[0] = process.env.LANGO_TEST_COMPILER
     result = child/spawnSync(process.execPath, command, {
         env: env
         stdio: "inherit"

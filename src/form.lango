@@ -13,6 +13,7 @@ export class Form(app, parent = null, token = null)
         owned
         inheritedNames
         disposed
+        stale
         element
         resources
         activity
@@ -44,6 +45,7 @@ Form(app, parent = null, token = null)
     @owned = []
     @inheritedNames = []
     @disposed = false
+    @stale = false
     @element = null
     @resources = []
     @activity = new Activities(@this)
@@ -145,8 +147,9 @@ Form:clearResources()
 
 Form:setToken(token)
     if token != null
+        if @app.saveToken(token) == false
+            return @this
         @token = token
-        @app.saveToken(token)
         if @app.heartbeat != null
             @app.heartbeat.observe(token)
     return @this
@@ -155,15 +158,21 @@ Form:send(url)
     return @app.send(@this, url)
 
 Form:handle(packet)
-    if @disposed
+    if @disposed or @stale
         return null
+    previous = @token
+    @app.beginLoginResponse(@this, packet)
     setToken(packet.token)
+    if @stale
+        return null
     body = packet.body
     if body.view != null
         @app.renderer.show(@this, body.view)
     if body.cmds != null
         for body.cmds as cmd
             @app.command(@this, cmd)
+    @app.completeLogin(@this)
+    @app.observeAuthentication(@this, previous, packet)
     return null
 
 Form:related(other)
@@ -183,6 +192,7 @@ Form:dispose()
     if @disposed
         return null
     @disposed = true
+    @app.loginScopeDisposed(@this)
     for @owned.slice() as control
         control.dispose()
     clearResources()

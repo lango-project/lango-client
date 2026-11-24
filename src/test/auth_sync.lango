@@ -1,0 +1,227 @@
+import "../app"
+    class App
+import "../form"
+    class Form
+import "../heartbeat"
+    class Heartbeat
+import js global Promise
+
+fixture()
+    state = {
+        data: {}
+        writes: []
+        stale: []
+        shown: 0
+        reloaded: 0
+        calls: []
+    }
+    save = (key, value)
+        capture state
+        data = state.data
+        data[key] = value
+        state.writes.add({
+            key: key
+            value: value
+        })
+    read = (key)
+        capture state
+        data = state.data
+        return data[key]
+    changed = (form)
+        capture state
+        state.stale.add(form)
+    show = (form, view)
+        capture state
+        state.shown = state.shown + 1
+    reload = ()
+        capture state
+        state.reloaded = state.reloaded + 1
+    fetch = (url, options)
+        capture state
+        pending = Promise/withResolvers()
+        state.calls.add({
+            url: url
+            options: options
+            resolve: pending.resolve
+        })
+        return pending.promise
+    host = {
+        location: {
+            pathname: "/"
+            href: "http://localhost/"
+            origin: "http://localhost"
+        }
+        storage: {
+            getItem: read
+            setItem: save
+        }
+        fetch: fetch
+        reload: reload
+    }
+    app = new App(host, {
+        waiting: ignore
+        sessionChanged: changed
+        show: show
+    })
+    return {
+        app: app
+        state: state
+        host: host
+    }
+
+ignore(first, second)
+    return null
+
+input(value)
+    read = ()
+        capture value
+        return value
+    return {
+        getValue: read
+        dispose: ignore
+    }
+
+test "authentication transitions update shared tokens without merging distinct form claims"
+    f = fixture()
+    first = new Form(f.app, null, "shared")
+    second = new Form(f.app, null, "shared")
+    other = new Form(f.app, null, "independent")
+    other.register("draft", input("unsaved text"))
+    f.app.commitAuthentication(first, "shared", "signed-in", "v1:local-change")
+    assert first.token == "signed-in" and second.token == "signed-in"
+    assert !first.stale and !second.stale
+    assert other.token == "independent" and other.stale
+    assert other.getValue().draft == "unsaved text"
+    assert f.state.stale.length == 1
+    writes = f.state.writes
+    index = writes.length - 1
+    last = writes[index]
+    assert last.key == "lango.authChange" and last.value == "v1:local-change"
+    heartbeat = new Heartbeat(f.app, f.host, "/ping")
+    live = heartbeat.live()
+    assert live.length == 1 and live[0] == "signed-in"
+    return chain other.send("/save")
+      then(ignored)
+        throw "Stale form unexpectedly sent"
+      catch(problem)
+        capture f
+        assert problem.startsWith("SessionChanged")
+        assert f.state.calls.length == 0
+
+test "remote changes keep form values and tokens visible but require an explicit reload"
+    f = fixture()
+    form = new Form(f.app, null, "old")
+    form.register("draft", input("keep this"))
+    f.app.externalAuthentication("v1:other-tab")
+    f.app.externalAuthentication("v1:other-tab")
+    assert form.stale and form.token == "old"
+    assert form.getValue().draft == "keep this"
+    assert f.state.stale.length == 1 and f.state.writes.length == 0
+    assert f.state.reloaded == 0
+    f.app.reloadSession()
+    assert f.state.reloaded == 1
+
+test "late responses and queued sends cannot publish old tokens after a remote authentication change"
+    f = fixture()
+    form = new Form(f.app, null, "old")
+    first = chain form.send("/running")
+      catch(problem)
+        return problem
+    queued = chain form.send("/queued")
+      catch(problem)
+        return problem
+    return chain Promise/resolve(null)
+      then(ignored)
+        capture f
+        capture first
+        capture queued
+        assert f.state.calls.length == 1
+        f.app.externalAuthentication("v1:changed-while-running")
+        header = (name)
+            if name == "x-lango-token"
+                return "obsolete-reply"
+            return null
+        json = ()
+            return Promise/resolve({
+                view: {
+                    type: "text"
+                    text: "obsolete"
+                }
+            })
+        calls = f.state.calls
+        calls[0].resolve({
+            ok: true
+            status: 200
+            headers: {
+                get: header
+            }
+            json: json
+        })
+        return Promise/all([first, queued])
+      then(results)
+        capture f
+        capture form
+        assert results[0].startsWith("SessionChanged") and results[1].startsWith("SessionChanged")
+        assert f.state.calls.length == 1
+        assert f.state.shown == 0 and f.state.writes.length == 0
+        assert form.token == "old"
+
+test "ordinary token renewal and repeated transition markers do not invalidate form scopes"
+    f = fixture()
+    first = new Form(f.app, null, "old")
+    second = new Form(f.app, null, "other")
+    first.handle({
+        token: "renewed"
+        body: {}
+    })
+    assert !second.stale and second.token == "other"
+    f.app.commitAuthentication(first, "renewed", "authenticated", "v1:seen")
+    count = f.state.writes.length
+    f.app.externalAuthentication("v1:seen")
+    assert !first.stale and f.state.writes.length == count
+
+test "an older tab cannot overwrite the current generation token before its storage event is delivered"
+    f = fixture()
+    older = new App(f.host, {})
+    oldForm = new Form(older, null, "old")
+    source = new Form(f.app, null, "old")
+    f.app.commitAuthentication(source, "old", "fresh-login", "v1:new-generation")
+    oldForm.setToken("late-old-reply")
+    assert oldForm.stale and oldForm.token == "old"
+    data = f.state.data
+    assert data["lango.token:v1:new-generation"] == "fresh-login"
+    assert data["lango.token"] == "fresh-login"
+
+test "startup uses the token stored for the current generation even if a racing old writer changed the legacy key"
+    f = fixture()
+    source = new Form(f.app, null, "old")
+    f.app.commitAuthentication(source, "old", "fresh-login", "v1:current")
+    data = f.state.data
+    data["lango.token"] = "obsolete-racing-write"
+    tokens = []
+    fetch = (url, options)
+        capture tokens
+        tokens.add(options.headers.Authorization)
+        json = ()
+            return Promise/resolve({})
+        get = (name)
+            if name == "x-lango-token"
+                return "fresh-login"
+            return null
+        return Promise/resolve({
+            ok: true
+            status: 200
+            headers: {
+                get: get
+            }
+            json: json
+        })
+    host = f.host
+    host.fetch = fetch
+    restarted = new App(host, {
+        waiting: ignore
+    })
+    return chain restarted.start()
+      then(ignored)
+        capture tokens
+        assert tokens[0] == "Bearer fresh-login"

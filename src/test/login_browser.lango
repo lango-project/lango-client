@@ -1,0 +1,238 @@
+import "./resource_browser"
+    alias staticServer = serve(req, res)
+import js global Object
+
+export serve(req, res)
+export reset()
+export exercise(page)
+export exerciseTabs(first, second)
+
+global records = []
+
+reset()
+    global records
+    records = []
+    return null
+
+serve(req, res)
+    if req.method != "POST"
+        if req.url == "/login-demo"
+            req.url = "/resources"
+        return staticServer(req, res)
+    body = {
+        text: ""
+    }
+    req.on("data", (chunk)
+        capture body
+        body.text = "${body.text}${chunk}"
+    )
+    req.on("end", ()
+        capture body
+        capture req
+        capture res
+        respond(req, res, from_json(body.text))
+    )
+    return null
+
+respond(req, res, input)
+    global records
+    records.add({
+        path: req.url
+        input: input
+        token: req.headers.authorization
+    })
+    res.setHeader("Content-Type", "application/json")
+    token = "old"
+    if req.headers.authorization == "Bearer fresh"
+        token = "fresh"
+    res.setHeader("x-lango-token", token)
+    switch req.url
+      case "/"
+          res.end(to_json({
+              needLoginUrl: "/event/need-login"
+          }))
+      case "/login-demo"
+          res.end(to_json({
+              view: {
+                  type: "form"
+                  controls: [{
+                      type: "input"
+                      name: "note"
+                      label: "Note"
+                      value: "Keep this"
+                  }, {
+                      type: "button"
+                      caption: "Protected save"
+                      url: "/protected-save"
+                  }, {
+                      type: "text"
+                      name: "status"
+                      text: "Ready"
+                  }]
+              }
+          }))
+      case "/protected-save"
+          if req.headers.authorization != "Bearer fresh"
+              res.removeHeader("x-lango-token")
+              res.setHeader("x-lango-need-login", "1")
+              res.writeHead(401)
+              res.end(to_json({
+                  error: "LoginRequired"
+                  needLogin: {
+                      reason: "LoginRequired"
+                      policy: "login"
+                      reauthSeconds: 300
+                      userId: null
+                  }
+              }))
+            else
+                res.setHeader("x-lango-token", "fresh")
+                res.end(to_json({
+                    cmds: [{
+                        type: "changeCaption"
+                        name: "status"
+                        caption: "Saved after login"
+                    }]
+                }))
+      case "/event/need-login"
+          res.end(to_json({
+              view: {
+                  type: "form"
+                  controls: [{
+                      type: "input"
+                      name: "password"
+                      label: "Password"
+                      variant: "Password"
+                  }, {
+                      type: "button"
+                      caption: "Confirm login"
+                      url: "/confirm-login"
+                  }]
+              }
+          }))
+      case "/confirm-login"
+          if input.password != "test-only-password"
+              res.writeHead(401)
+              res.end(to_json({
+                  error: "InvalidCredentials"
+              }))
+            else
+                res.setHeader("x-lango-token", "fresh")
+                res.setHeader("x-lango-auth-change", "v1:browser-login-change")
+                res.end(to_json({
+                    cmds: [{
+                        type: "loginSatisfied"
+                        userId: "alice"
+                    }]
+                }))
+    return null
+
+exercise(page)
+    return chain page.getByRole("button", {
+        name: "Protected save"
+    }).click()
+      then(ignored)
+        capture page
+        return page.getByLabel("Password", {
+            exact: true
+        }).fill("test-only-password")
+      then(ignored)
+        capture page
+        return page.getByRole("button", {
+            name: "Confirm login"
+        }).click()
+      then(ignored)
+        capture page
+        return page.getByText("Saved after login", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture page
+        global records
+        assert records.length == 6
+        assert records[2].path == "/protected-save"
+        assert records[3].path == "/event/need-login"
+        assert records[4].input.password == "test-only-password"
+        assert records[5].path == "/protected-save"
+        assert records[5].input.note == "Keep this"
+        assert records[5].token == "Bearer fresh"
+        return page.locator("dialog.lango-login").count()
+      then(count)
+        assert count == 0
+
+exerciseTabs(first, second)
+    return chain second.getByLabel("Note", {
+        exact: true
+    }).fill("Unsaved in the other tab")
+      then(ignored)
+        capture first
+        return first.getByRole("button", {
+            name: "Protected save"
+        }).click()
+      then(ignored)
+        capture first
+        return first.getByLabel("Password", {
+            exact: true
+        }).fill("test-only-password")
+      then(ignored)
+        capture first
+        return first.getByRole("button", {
+            name: "Confirm login"
+        }).click()
+      then(ignored)
+        capture first
+        return first.getByText("Saved after login", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture second
+        return second.getByRole("button", {
+            name: "Reload page"
+        }).waitFor()
+      then(ignored)
+        capture second
+        return second.getByLabel("Note", {
+            exact: true
+        }).inputValue()
+      then(text)
+        capture second
+        assert text == "Unsaved in the other tab"
+        return second.evaluate("localStorage.getItem('lango.authChange')")
+      then(change)
+        capture second
+        assert change == "v1:browser-login-change"
+        return second.getByRole("button", {
+            name: "Protected save"
+        }).click()
+      then(ignored)
+        capture second
+        return second.getByText("SessionChanged: reload the page", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        capture second
+        return second.getByRole("button", {
+            name: "Reload page"
+        }).click()
+      then(ignored)
+        capture second
+        return second.getByRole("button", {
+            name: "Protected save"
+        }).waitFor()
+      then(ignored)
+        capture second
+        return second.getByRole("button", {
+            name: "Protected save"
+        }).click()
+      then(ignored)
+        capture second
+        return second.getByText("Saved after login", {
+            exact: true
+        }).waitFor()
+      then(ignored)
+        global records
+        count = 0
+        for records as record
+            if record.path == "/confirm-login"
+                count = count + 1
+        assert count == 1

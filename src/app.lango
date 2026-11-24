@@ -1,3 +1,4 @@
+import js global crypto
 import js global Error
 import js global Object
 import js global Promise
@@ -20,6 +21,7 @@ export class App(host, renderer)
         reporter
     methods
         start()
+        acceptEvents(events)
         post(url, input, token)
         saveToken(token)
         clearSavedToken()
@@ -29,7 +31,20 @@ export class App(host, renderer)
         executeDelivery(job)
         checkUrl(url)
         hostUrl()
-        request(url, input, token, signal = null, channel = false, opening = false)
+        request(url, input, token, signal = null, channel = false, opening = false, recover = false, expected = null)
+        sendInput(job, input)
+        resumeInput(job, input, challenge)
+        needLogin(job, challenge)
+        finishLogin(form, userId)
+        completeLogin(form)
+        beginLoginResponse(form, packet)
+        observeAuthentication(form, previous, packet)
+        commitAuthentication(source, previous, token, change)
+        externalAuthentication(change)
+        invalidateForm(form)
+        reloadSession()
+        cancelLogin(problem = "LoginCancelled")
+        loginScopeDisposed(form)
         poll(url, input, token, signal)
         canPoll(form)
         pausePolls(form = null)
@@ -61,6 +76,18 @@ App(host, renderer)
     @pingJob = null
     @resources = []
     @reporter = null
+    @login = null
+    @committingAuthentication = false
+    @authVersion = 0
+    @authChanges = []
+    @externalStale = false
+    @storageChange = null
+    try
+        @storageChange = @host.storage.getItem("lango.authChange")
+        if !is_string(@storageChange) or !@storageChange.startsWith("v1:")
+            @storageChange = null
+    catch problem
+        @storageChange = null
 
 App:now()
     if @host.now != null
@@ -96,8 +123,18 @@ App:error(form, error, code = "UiFailure", name = null)
     return null
 
 App:saveToken(token)
+    if @externalStale
+        return false
     try
-        @host.storage.setItem("lango.token", token)
+        storage = @host.storage
+        if storage.getItem != null
+            current = storage.getItem("lango.authChange")
+            if !@committingAuthentication and is_string(current) and current.startsWith("v1:") and current != @storageChange
+                externalAuthentication(current)
+                return false
+        if @storageChange != null
+            storage.setItem("lango.token:${@storageChange}", token)
+        storage.setItem("lango.token", token)
     catch error
         return null
     return null
@@ -105,6 +142,8 @@ App:saveToken(token)
 App:clearSavedToken()
     try
         @host.storage.removeItem("lango.token")
+        if @storageChange != null
+            @host.storage.removeItem("lango.token:${@storageChange}")
         return true
     catch error
         return false
@@ -115,7 +154,7 @@ App:post(url, input, token)
 App:poll(url, input, token, signal)
     return request(url, input, token, signal, true)
 
-App:request(url, input, token, signal = null, channel = false, opening = false)
+App:request(url, input, token, signal = null, channel = false, opening = false, recover = false, expected = null)
     target = checkUrl(url)
     headers = {
         "Content-Type": "application/json"
@@ -125,6 +164,8 @@ App:request(url, input, token, signal = null, channel = false, opening = false)
         headers["X-Lango-Screen"] = @host.screen()
     if token != null
         headers.Authorization = "Bearer ${token}"
+    if expected != null
+        headers["X-Lango-Expected-User"] = to_json(expected)
     options = {
         method: "POST"
         headers: headers
@@ -134,10 +175,19 @@ App:request(url, input, token, signal = null, channel = false, opening = false)
         options.signal = signal
     return chain @host.fetch("${target.pathname}${target.search}", options)
       then(res)
+        capture recover
         capture channel
         capture opening
         capture token
         if !res.ok
+            if recover and (res.status == 401 or res.status == 403) and res.headers != null and res.headers.get("x-lango-need-login") == "1"
+                return chain res.json()
+                  then(body)
+                    if !is_object(body) or !is_object(body.needLogin) or (body.error != "LoginRequired" and body.error != "ReauthenticationRequired") or body.needLogin.reason != body.error
+                        throw "Invalid login challenge"
+                    return {
+                        needLogin: body.needLogin
+                    }
             if opening and res.status == 401 and token != null
                 if clearSavedToken()
                     throw new Error("Startup HTTP 401: saved token was rejected and cleared. Reload the page to start a new session.")
@@ -163,6 +213,7 @@ App:request(url, input, token, signal = null, channel = false, opening = false)
             if status == null
                 status = 200
             return {
+                authChange: res.headers.get("x-lango-auth-change")
                 status: status
                 token: res.headers.get("x-lango-token")
                 body: body
@@ -178,16 +229,29 @@ App:request(url, input, token, signal = null, channel = false, opening = false)
 App:start()
     token = null
     try
-        token = @host.storage.getItem("lango.token")
+        @storageChange = @host.storage.getItem("lango.authChange")
+        if !is_string(@storageChange) or !@storageChange.startsWith("v1:")
+            @storageChange = null
+        token = null
+        if @storageChange != null
+            token = @host.storage.getItem("lango.token:${@storageChange}")
+        if token == null
+            token = @host.storage.getItem("lango.token")
     catch error
         token = null
     return chain request("/", {}, token, null, false, true)
       then(packet)
-        @events = packet.body
+        acceptEvents(packet.body)
         if @events.clientErrorUrl != null
             @reporter = new ErrorReporter(@this, @events.clientErrorUrl)
         if @events.pingUrl != null
             @heartbeat = new Heartbeat(@this, @host, @events.pingUrl)
+        if @externalStale
+            if @root == null
+                @root = new Form(@this)
+                @root.element = @host.mount
+            invalidateForm(@root)
+            return null
         @root = new Form(@this, null, packet.token)
         @root.element = @host.mount
         @root.setToken(packet.token)
@@ -196,15 +260,22 @@ App:start()
             if @heartbeat != null
                 @heartbeat.start()
             return null
+      catch(problem)
+        if @externalStale
+            return null
+        throw problem
 
 App:send(form, url, owner = null)
     if @disposed or form.disposed
         return Promise/reject("Form is disposed")
+    if form.stale or @externalStale
+        return Promise/reject("SessionChanged: reload the page")
     pending = new Promise((resolve, reject)
         capture form
         capture url
         capture owner
         @queue.add({
+            authVersion: @authVersion
             kind: "send"
             form: form
             url: url
@@ -221,6 +292,7 @@ App:deliver(form, action, owner, generation)
         return Promise/resolve(null)
     deferred = Promise/withResolvers()
     @queue.add({
+        authVersion: @authVersion
         kind: "delivery"
         form: form
         action: action
@@ -237,6 +309,7 @@ App:report(form, url, input, owner)
         return Promise/resolve(null)
     deferred = Promise/withResolvers()
     @queue.add({
+        authVersion: @authVersion
         kind: "report"
         form: form
         url: url
@@ -249,7 +322,7 @@ App:report(form, url, input, owner)
     return deferred.promise
 
 App:canPoll(form)
-    if @disposed or form.disposed or @pingJob != null
+    if @disposed or form.disposed or form.stale or @externalStale or @pingJob != null or @login != null
         return false
     for @active as job
         if form.related(job.form)
@@ -271,12 +344,20 @@ App:resumePolls()
     return null
 
 App:drain()
-    if @pingJob != null
+    if @disposed
+        return null
+    if @pingJob != null and @login == null
         if @active.length == 0 and !@pingJob.running
             @pingJob.running = true
             executePing(@pingJob)
         return null
     for @queue.slice() as job
+        if job.authVersion != @authVersion or job.form.stale or @externalStale
+            @queue.splice(@queue.indexOf(job), 1)
+            job.reject("SessionChanged: queued request cancelled")
+            continue
+        if @login != null and !@login.form.related(job.form)
+            continue
         blocked = false
         for @active as running
             if job.form.related(running.form)
@@ -310,7 +391,9 @@ App:executeDelivery(job)
         job.reject(error)
       finally
         capture job
-        @active.splice(@active.indexOf(job), 1)
+        index = @active.indexOf(job)
+        if index >= 0
+            @active.splice(index, 1)
         drain()
 
 App:ping()
@@ -351,6 +434,8 @@ App:execute(job)
         capture job
         if form.disposed
             throw "Form is disposed"
+        if form.stale or @externalStale
+            throw "SessionChanged: reload the page"
         if job.owner != null and !job.owner.active
             return null
         if job.kind == "report"
@@ -359,7 +444,7 @@ App:execute(job)
         @renderer.waiting(form, true)
         ready = form.prepareValue()
         if ready == null
-            return post(job.url, form.getValue(), form.token)
+            return sendInput(job, from_json(to_json(form.getValue())))
         return chain ready
           then(ignored)
             capture form
@@ -368,15 +453,19 @@ App:execute(job)
                 throw "Form is disposed"
             if job.owner != null and !job.owner.active
                 return null
-            return post(job.url, form.getValue(), form.token)
+            return sendInput(job, from_json(to_json(form.getValue())))
       then(packet)
         capture form
         capture job
+        if job.authVersion != @authVersion or form.stale or @externalStale
+            throw "SessionChanged: response discarded"
         if packet != null and !form.disposed and (job.owner == null or job.owner.active)
             if job.kind == "report"
                 form.setToken(packet.token)
               else
                   form.handle(packet)
+            if form.stale or @externalStale
+                throw "SessionChanged: response discarded"
       then(ignored)
         capture job
         job.resolve(null)
@@ -388,7 +477,9 @@ App:execute(job)
         capture form
         if job.kind == "send"
             @renderer.waiting(form, false)
-        @active.splice(@active.indexOf(job), 1)
+        index = @active.indexOf(job)
+        if index >= 0
+            @active.splice(index, 1)
         drain()
 
 App:navigate(url, push = true)
@@ -449,6 +540,12 @@ App:selectTemplate(path)
 
 App:command(form, cmd)
     switch cmd.type
+      case "loginSatisfied"
+          finishLogin(form, cmd.userId)
+      case "cancelLogin"
+          if @login == null or !@login.form.related(form)
+              throw "cancelLogin requires the active login form"
+          @login.cancelled = true
       case "values"
           form.setValue(cmd.values)
       case "addRow"
@@ -525,6 +622,7 @@ App:command(form, cmd)
 
 App:dispose()
     @disposed = true
+    cancelLogin()
     if @heartbeat != null
         @heartbeat.dispose()
     if @reporter != null
@@ -537,4 +635,220 @@ App:dispose()
     for @resources as release
         release()
     @resources = []
+    return null
+
+App:sendInput(job, input)
+    form = job.form
+    recover = @login == null or !@login.form.related(form)
+    return chain request(job.url, input, form.token, null, false, false, recover)
+      then(packet)
+        capture job
+        capture input
+        if packet.needLogin == null
+            return packet
+        return resumeInput(job, input, packet.needLogin)
+
+App:resumeInput(job, input, challenge)
+    return chain needLogin(job, challenge)
+      then(identity)
+        capture job
+        capture input
+        form = job.form
+        if form.disposed or form.stale or @externalStale or (job.owner != null and !job.owner.active)
+            throw "Pending login request is no longer active"
+        job.authVersion = @authVersion
+        return request(job.url, input, identity.token, null, false, false, false, identity.expected)
+
+App:needLogin(job, challenge)
+    if @events.needLoginUrl == null
+        throw "Login is required but no needLogin event is configured"
+    session = @login
+    if session != null and session.originalToken != job.form.token
+        invalidateForm(job.form)
+        throw "SessionChanged: another form is awaiting login"
+    if session == null
+        deferred = Promise/withResolvers()
+        scope = new Form(@this, null, job.form.token)
+        session = {
+            form: scope
+            source: job.form
+            promise: deferred.promise
+            resolve: deferred.resolve
+            reject: deferred.reject
+            release: null
+            ready: null
+            cancelled: false
+            change: null
+            originalToken: job.form.token
+        }
+        chain session.promise
+          catch(problem)
+            return null
+        @login = session
+        pausePolls()
+        try
+            cancel = ()
+                cancelLogin()
+            session.release = @renderer.openLogin(scope, cancel)
+            chain post(@events.needLoginUrl, challenge, scope.token)
+              then(packet)
+                capture session
+                if @login == session and !session.form.disposed
+                    session.form.handle(packet)
+              catch(problem)
+                capture session
+                if @login == session
+                    cancelLogin(problem)
+        catch problem
+            cancelLogin(problem)
+    return chain session.promise
+      then(identity)
+        capture challenge
+        if challenge.userId != null and identity.userId != challenge.userId
+            for @forms.slice() as form
+                invalidateForm(form)
+            throw "IdentityChanged"
+        return {
+            token: identity.token
+            expected: challenge.userId
+        }
+
+App:finishLogin(form, userId)
+    session = @login
+    if session == null or !session.form.related(form) or form.token == null
+        throw "loginSatisfied requires an active login form and token"
+    if @active.length == 0
+        throw "No request is waiting for login"
+    session.ready = {
+        token: form.token
+        userId: userId
+    }
+    return null
+
+App:completeLogin(form)
+    session = @login
+    if session == null or !session.form.related(form)
+        return null
+    if session.cancelled
+        return cancelLogin()
+    if session.ready == null
+        return null
+    @login = null
+    identity = session.ready
+    change = session.change
+    if !is_string(change) or !change.startsWith("v1:")
+        change = "v1:${crypto/randomUUID()}"
+    commitAuthentication(session.source, session.originalToken, identity.token, change)
+    session.resolve(identity)
+    if session.release != null
+        release = session.release
+        release()
+    session.form.dispose()
+    drain()
+    return null
+
+App:cancelLogin(problem = "LoginCancelled")
+    session = @login
+    if session == null
+        return null
+    @login = null
+    session.reject(problem)
+    if session.release != null
+        release = session.release
+        release()
+    session.form.dispose()
+    drain()
+    return null
+
+App:loginScopeDisposed(form)
+    if @login != null and (@login.form == form or @login.source == form)
+        cancelLogin()
+    return null
+
+App:acceptEvents(events)
+    if !is_object(events) or is_array(events)
+        throw "Startup events must be a map"
+    if events.needLoginUrl != null
+        checkUrl(events.needLoginUrl)
+    @events = events
+    return null
+
+App:beginLoginResponse(form, packet)
+    if @login != null and @login.form.related(form)
+        @login.change = packet.authChange
+        @login.ready = null
+        @login.cancelled = false
+    return null
+
+App:observeAuthentication(form, previous, packet)
+    change = packet.authChange
+    if @login != null and @login.form.related(form)
+        return null
+    if is_string(change) and change.startsWith("v1:") and !@authChanges.includes(change)
+        commitAuthentication(form, previous, packet.token, change)
+    return null
+
+App:commitAuthentication(source, previous, token, change)
+    if @disposed or @authChanges.includes(change)
+        return null
+    previousChange = @storageChange
+    @storageChange = change
+    @authChanges.add(change)
+    if @authChanges.length > 64
+        @authChanges.shift()
+    @authVersion = @authVersion + 1
+    @committingAuthentication = true
+    for @forms.slice() as form
+        if form.disposed or form.stale
+            continue
+        if form == source or form.token == previous or form.token == token
+            form.setToken(token)
+          else
+              invalidateForm(form)
+    @committingAuthentication = false
+    try
+        @host.storage.setItem("lango.authChange", change)
+        if previousChange != null and @host.storage.removeItem != null
+            @host.storage.removeItem("lango.token:${previousChange}")
+    catch problem
+        return null
+    return null
+
+App:externalAuthentication(change)
+    if @disposed or !is_string(change) or !change.startsWith("v1:") or @authChanges.includes(change)
+        return null
+    @authChanges.add(change)
+    if @authChanges.length > 64
+        @authChanges.shift()
+    @storageChange = change
+    @externalStale = true
+    @authVersion = @authVersion + 1
+    cancelLogin("SessionChanged: authentication changed in another tab")
+    if @heartbeat != null
+        @heartbeat.dispose()
+    if @root == null and @host.mount != null
+        @root = new Form(@this)
+        @root.element = @host.mount
+    for @forms.slice() as form
+        invalidateForm(form)
+    return null
+
+App:invalidateForm(form)
+    if form.disposed or form.stale
+        return null
+    form.stale = true
+    form.activity.clear()
+    parent = form.parent
+    loop while parent != null
+        if parent.stale
+            return null
+        parent = parent.parent
+    if @renderer.sessionChanged != null
+        @renderer.sessionChanged(form)
+    return null
+
+App:reloadSession()
+    if @host.reload == null
+        throw "Reload the page to continue"
+    @host.reload()
     return null

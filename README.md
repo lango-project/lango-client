@@ -625,3 +625,29 @@ The dispatcher accepts `addRow`, `insertRow`, `deleteRow`, `setRowValue`,
 insertion at the row count appends. Full `values` commands retain their final
 position after incremental commands. See the Lango UI package
 documentation for builder examples and precise collection rules.
+
+
+Login recovery is optional: bootstrap may advertise `needLoginUrl`. A marked
+Server policy challenge suspends the exact form submission and opens an isolated
+login form using that UI handler. `loginSatisfied` closes the form and replays the
+submission once with the new token; `cancelLogin` or closing the modal abandons it.
+An account change during reauthentication prevents replay. Ordinary HTTP errors,
+invalid tokens, transport failures and handler failures are never retried.
+The startup invalid-token clear-and-reload behavior remains unchanged.
+
+
+After a successful authentication transition, forms sharing the original token
+adopt the new token. Distinct form scopes and other same-origin tabs retain their
+visible inputs and show an explicit reload notice; stale requests are blocked.
+Only an opaque change identifier is broadcast through localStorage. Pending old
+requests are canceled and late responses cannot overwrite current state. An
+already dispatched server operation may still have executed and is never retried
+automatically. Startup prefers the token saved for the current authentication
+generation, preventing a racing old tab from restoring an obsolete saved token.
+
+
+`npm run test:security` runs the complete Secure notes application from
+`lango-ui/examples/security`. It installs local package archives offline and uses
+real SQLite accounts, HTTPS/Secure cookies and Chromium to check login replay,
+password confirmation, logout, transaction rollback and ban across clients.
+The application starts after its compiler dependency has been removed.

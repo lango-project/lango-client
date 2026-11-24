@@ -76,6 +76,8 @@ export class BootstrapRenderer()
         presentations
         navigation
     methods
+        sessionChanged(form)
+        openLogin(form, cancel)
         registerControlType(name, factory)
         build(form, props)
         show(form, view)
@@ -293,4 +295,63 @@ BootstrapRenderer:reportError(form, error)
 BootstrapRenderer:locationChanged(url)
     for @navigation as group
         group.locationChanged(url)
+    return null
+
+BootstrapRenderer:openLogin(form, cancel)
+    modal = document/createElement("dialog")
+    modal.className = "lango-login modal-content p-3"
+    modal.setAttribute("aria-label", "Sign in")
+    modal.style.maxWidth = "min(36rem, 95vw)"
+    close = document/createElement("button")
+    close.type = "button"
+    close.className = "btn-close align-self-end"
+    close.setAttribute("aria-label", "Cancel sign in")
+    body = document/createElement("div")
+    form.element = body
+    modal.appendChild(close)
+    modal.appendChild(body)
+    click = ()
+        capture cancel
+        cancel()
+    escape = (event)
+        capture cancel
+        event.preventDefault()
+        cancel()
+    close.addEventListener("click", click)
+    modal.addEventListener("cancel", escape)
+    document/body/appendChild(modal)
+    modal.showModal()
+    return ()
+        capture modal
+        capture close
+        capture click
+        capture escape
+        close.removeEventListener("click", click)
+        modal.removeEventListener("cancel", escape)
+        modal.close()
+        modal.remove()
+
+BootstrapRenderer:sessionChanged(form)
+    waiting(form, false)
+    if form.element == null
+        return null
+    alert = document/createElement("div")
+    alert.className = "alert alert-warning lango-session-changed"
+    alert.setAttribute("role", "alert")
+    alert.textContent = "Your sign-in state changed. Reload the page to continue. Your current input is still visible. "
+    button = document/createElement("button")
+    button.type = "button"
+    button.className = "btn btn-outline-dark btn-sm"
+    button.textContent = "Reload page"
+    click = ()
+        capture form
+        form.app.reloadSession()
+    button.addEventListener("click", click)
+    alert.appendChild(button)
+    form.element.prepend(alert)
+    release = ()
+        capture button
+        capture click
+        button.removeEventListener("click", click)
+    form.resources.add(release)
     return null

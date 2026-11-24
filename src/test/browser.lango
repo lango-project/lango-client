@@ -1,3 +1,8 @@
+import "./login_browser"
+    alias loginServer = serve(req, res)
+    alias resetLogin = reset()
+    alias exerciseLogin = exercise(page)
+    alias exerciseLoginTabs = exerciseTabs(first, second)
 import js "playwright" as playwright
 import js "node:http" as http
 import js "node:fs" as fs
@@ -796,6 +801,115 @@ test "tables render data, isolate row templates, collect values and clean replac
       finally
         capture state
         capture server
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+
+test "needLogin renders an isolated modal and resumes the protected form submission"
+    resetLogin()
+    server = http/createServer(loginServer)
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    state = {}
+    errorHandler = browserError
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(instance)
+        capture state
+        state.browser = instance
+        return state.browser.newPage({
+            timezoneId: "Pacific/Kiritimati"
+        })
+      then(page)
+        capture state
+        capture server
+        capture errorHandler
+        state.page = page
+        page.setDefaultTimeout(10000)
+        page.on("pageerror", errorHandler)
+        return state.page.goto("http://127.0.0.1:${server.address().port}/login-demo")
+      then(ignored)
+        capture state
+        return chain exerciseLogin(state.page)
+          catch(error)
+            capture state
+            return chain state.page.locator("body").ariaSnapshot()
+              then(text)
+                capture error
+                println("Login test DOM: ${text}")
+                throw error
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
+        server.close()
+        if state.browser != null
+            return state.browser.close()
+
+test "authentication changes notify another tab without replacing its values or replaying its actions"
+    resetLogin()
+    server = http/createServer(loginServer)
+    state = {}
+    pending = new Promise((resolve, reject)
+        capture server
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", resolve)
+    )
+    return chain pending
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(browser)
+        capture state
+        Object/assign(state, {
+            browser: browser
+        })
+        return browser.newContext()
+      then(scope)
+        capture state
+        Object/assign(state, {
+            browserContext: scope
+        })
+        return scope.newPage()
+      then(page)
+        capture server
+        capture state
+        Object/assign(state, {
+            first: page
+        })
+        return page.goto("http://127.0.0.1:${server.address().port}/login-demo")
+      then(ignored)
+        capture state
+        return state.first.getByRole("button", {
+            name: "Protected save"
+        }).waitFor()
+      then(ignored)
+        capture state
+        return state.browserContext.newPage()
+      then(page)
+        capture server
+        capture state
+        Object/assign(state, {
+            second: page
+        })
+        return page.goto("http://127.0.0.1:${server.address().port}/login-demo")
+      then(ignored)
+        capture state
+        return exerciseLoginTabs(state.first, state.second)
+      finally
+        capture server
+        capture state
+        server.closeAllConnections()
         server.close()
         if state.browser != null
             return state.browser.close()

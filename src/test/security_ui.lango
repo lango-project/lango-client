@@ -1,0 +1,515 @@
+import js "node:fs" as fs
+import js "node:path" as path
+import js "node:child_process" as children
+import js "node:https" as https
+import js "node:http" as http
+import js "playwright" as playwright
+import js "@lango-project/lango-js/database" as database
+import js global process
+import js global Object
+import js global Promise
+import js global Number
+import js global RegExp
+import js global Date
+import js global setTimeout
+import js global clearTimeout
+
+npm(directory, args, env = null)
+    argv = [process.env.npm_execpath]
+    for args as arg
+        argv.add(arg)
+    return children/execFileSync(process.execPath, argv, {
+        cwd: directory
+        env: env
+        encoding: "utf8"
+        timeout: 120000
+        maxBuffer: 10485760
+        stdio: ["ignore", "pipe", "pipe"]
+    })
+
+pack(directory, target)
+    result = from_json(npm(directory, ["pack", "--ignore-scripts", "--json", "--pack-destination", target]))
+    return path/join(target, result[0].filename)
+
+setup()
+    root = process.cwd()
+    server = path/resolve("../lango-server")
+    ui = path/resolve("../lango-ui")
+    compiler = path/resolve("../lango-js")
+    npm(server, ["run", "build"])
+    npm(ui, ["run", "build"])
+    dir = fs/mkdtempSync(path/resolve(".test-output/security-ui-"))
+    try
+        app = path/join(dir, "app")
+        fs/mkdirSync(app)
+        for ["src", "tools", "routes.xml", "deploy.xml", "package.json"] as file
+            fs/cpSync(path/join(ui, "examples/security", file), path/join(app, file), {
+                recursive: true
+            })
+        manifest = from_json(fs/readFileSync(path/join(app, "package.json"), "utf8"))
+        fs/copyFileSync(path/join(root, "src/test/security_ui_failure.lango"), path/join(app, "src/failure.lango"))
+        entries = manifest.exports
+        entries["./failure"] = "./dist/failure.mjs"
+        scripts = manifest.scripts
+        scripts.build = "${scripts.build} && lango build src/failure.lango --out dist/failure.mjs"
+        routesFile = path/join(app, "routes.xml")
+        route = <security-ui path="/test/rollback" module="@lango-example/security-ui/failure" handler="invalidView" policy="login"/>
+        routes = fs/readFileSync(routesFile, "utf8")
+        fs/writeFileSync(routesFile, routes.replace("</routes>", "${route}\n</routes>"))
+        handlerFile = path/join(app, "src/handlers.lango")
+        handlers = fs/readFileSync(handlerFile, "utf8")
+        existing = '    form.add(new ui/Button("Save note", "/notes/save"))'
+        addition = '    form.add(new ui/Button("Fail representation", "/test/rollback"))'
+        fs/writeFileSync(handlerFile, handlers.replace(existing, "${existing}\n${addition}"))
+        manifest.dependencies = {}
+        manifest.devDependencies = {}
+        fs/writeFileSync(path/join(app, "package.json"), to_json(manifest))
+        archives = []
+        for [server, ui, root] as directory
+            archives.add(pack(directory, dir))
+        install = ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"]
+        for archives as archive
+            install.add(archive)
+        npm(app, install)
+        compilerArchive = pack(compiler, dir)
+        npm(app, ["install", "--save-dev", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", compilerArchive])
+        npm(app, ["run", "build"])
+        for ["alice", "administrator"] as name
+            env = Object/assign({}, process.env, {
+                SECURITY_SETUP_PASSWORD: "Browser test password only 2026!"
+            })
+            args = ["run", "setup", "--", "data/application.sqlite", name]
+            if name == "administrator"
+                args.add("admin")
+            npm(app, args, env)
+        xml = fs/readFileSync(path/join(app, "deploy.xml"), "utf8")
+        fs/writeFileSync(path/join(app, "deploy.xml"), xml.replace('port="3000"', 'port="0"'))
+        children/execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", path/join(dir, "key.pem"), "-out", path/join(dir, "cert.pem")], {
+            stdio: "ignore"
+        })
+        npm(app, ["prune", "--omit=dev", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"])
+        assert !fs/existsSync(path/join(app, "node_modules/@lango-project/lango-js"))
+        return {
+            dir: dir
+            app: app
+            child: null
+            proxy: null
+            browser: null
+            target: null
+            stdout: ""
+            stderr: ""
+            expired: false
+        }
+    catch error
+        fs/rmSync(dir, {
+            recursive: true
+            force: true
+        })
+        throw error
+
+proxy(state)
+    forward = (req, res)
+        capture state
+        capture http
+        received = (reply)
+            capture res
+            res.writeHead(reply.statusCode, reply.headers)
+            reply.pipe(res)
+        options = {
+            hostname: "127.0.0.1"
+            port: state.target
+            path: req.url
+            method: req.method
+            headers: req.headers
+        }
+        upstream = http/request(options, received)
+        upstream.on("error", (error)
+            capture res
+            if !res.headersSent
+                res.writeHead(502)
+            res.end()
+        )
+        req.pipe(upstream)
+    state.proxy = https/createServer({
+        key: fs/readFileSync(path/join(state.dir, "key.pem"))
+        cert: fs/readFileSync(path/join(state.dir, "cert.pem"))
+    }, forward)
+    pending = new Promise((resolve, reject)
+        capture state
+        state.proxy.once("error", reject)
+        state.proxy.listen(0, "127.0.0.1", ()
+            capture state
+            capture resolve
+            state.origin = "https://127.0.0.1:${state.proxy.address().port}"
+            resolve(state)
+        )
+    )
+    return pending
+
+launch(state)
+    ready = Promise/withResolvers()
+    exited = Promise/withResolvers()
+    state.exited = exited.promise
+    state.child = children/spawn(process.execPath, [path/join(state.app, "node_modules/@lango-project/lango-server/dist/cli/server.mjs"), state.app, "--verbose"], {
+        cwd: state.app
+        env: Object/assign({}, process.env, {
+            LANGO_ORIGIN: state.origin
+            LANGO_JWT_KEY: "browser-test-only-signing-secret-2026-at-least-32"
+            SECURITY_AUDIT_KEY: "browser-test-only-audit-secret-2026-at-least-32"
+        })
+        stdio: ["ignore", "pipe", "pipe"]
+    })
+    child = state.child
+    child.stdout.on("data", (chunk)
+        capture state
+        capture ready
+        state.stdout = "${state.stdout}${chunk}"
+        pattern = new RegExp("Listening on [^:]+:([0-9]+)")
+        match = pattern.exec(state.stdout)
+        if match != null
+            state.target = Number/parseInt(match[1], 10)
+            ready.resolve(state)
+    )
+    child.stderr.on("data", (chunk)
+        capture state
+        state.stderr = "${state.stderr}${chunk}"
+    )
+    child.once("error", (error)
+        capture ready
+        ready.reject(error)
+    )
+    child.once("exit", (code)
+        capture state
+        capture ready
+        capture exited
+        if state.target == null
+            ready.reject("Security UI startup failed: ${state.stderr}")
+        exited.resolve(code)
+    )
+    expire = ()
+        capture ready
+        ready.reject("Security UI startup timed out")
+    timer = setTimeout(expire, 15000)
+    return chain ready.promise
+      finally
+        capture timer
+        clearTimeout(timer)
+
+inspect(state, action)
+    adapter = database/createSqliteAdapter(path/join(state.app, "data/application.sqlite"))
+    context db = adapter
+    try
+        switch action
+          case "alice"
+              user = SQL
+                  select id from security_users where username = 'alice'
+              user.execute()
+              assert user.next()
+              return user.id
+          case "age"
+              stamp = SQL
+                  update security_grants set authenticated_at = :now
+                  where user_id in (select id from security_users where username = 'alice') and revoked = 0
+              stamp.now = Date/now() - 120000
+              stamp.execute()
+              return null
+          case "ban"
+              banned = SQL
+                  select banned from security_users where username = 'alice'
+              banned.execute()
+              assert banned.next() and banned.banned == 1
+              grants = SQL
+                  select count(*) as total from security_grants
+                  where user_id in (select id from security_users where username = 'alice') and revoked = 0
+              grants.execute()
+              assert grants.next() and grants.total == 0
+              return null
+          case "logout"
+              revoked = SQL
+                  select count(*) as total from security_grants where revoked = 1
+              revoked.execute()
+              assert revoked.next() and revoked.total >= 1
+              return null
+          case "count"
+              notes = SQL
+                  select count(*) as total from application_notes
+              notes.execute()
+              assert notes.next()
+              return notes.total
+          case "binding"
+              record = SQL
+                  select n.body, n.client_id, c.registered_ip, c.registered_user_agent,
+                         u.username from application_notes n
+                  join security_clients c on c.client_id = n.client_id
+                  join security_users u on u.id = n.user_id
+              record.execute()
+              assert record.next()
+              assert record.body == "Original protected note" and record.username == "alice"
+              assert record.registered_ip == "127.0.0.1" and is_string(record.registered_user_agent)
+              return null
+    finally
+        adapter.close()
+
+click(page, name)
+    return page.getByRole("button", {
+        name: name
+        exact: true
+    }).click()
+
+fill(page, name, value)
+    return page.getByLabel(name, {
+        exact: true
+    }).fill(value)
+
+text(page, value)
+    return page.getByText(value, {
+        exact: true
+    }).waitFor()
+
+signIn(page, username)
+    return chain fill(page, "Username", username)
+      then(ignored)
+        capture page
+        return fill(page, "Password", "Browser test password only 2026!")
+      then(ignored)
+        capture page
+        return page.getByLabel("Remember me", {
+            exact: true
+        }).check()
+      then(ignored)
+        capture page
+        return click(page, "Sign in")
+
+exercise(state)
+    page = state.page
+    return chain page.goto("${state.origin}/")
+      then(ignored)
+        capture page
+        return click(page, "Anonymous preview")
+      then(ignored)
+        capture page
+        return text(page, "Anonymous preview accepted")
+      then(ignored)
+        capture page
+        return fill(page, "Note", "Original protected note")
+      then(ignored)
+        capture page
+        return click(page, "Save note")
+      then(ignored)
+        capture page
+        return fill(page, "Username", "alice")
+      then(ignored)
+        capture page
+        return fill(page, "Password", "Wrong browser password 2026!")
+      then(ignored)
+        capture page
+        return click(page, "Sign in")
+      then(ignored)
+        capture page
+        return text(page, "HTTP 401")
+      then(ignored)
+        capture state
+        capture page
+        assert inspect(state, "count") == 0
+        return signIn(page, "alice")
+      then(ignored)
+        capture page
+        return text(page, "Note saved")
+      then(ignored)
+        capture state
+        capture page
+        assert inspect(state, "count") == 1
+        inspect(state, "binding")
+        return click(page, "Fail representation")
+      then(ignored)
+        capture page
+        return text(page, "HTTP 500")
+      then(ignored)
+        capture state
+        capture page
+        assert inspect(state, "count") == 1
+        inspect(state, "age")
+        return page.reload()
+      then(ignored)
+        capture page
+        return fill(page, "Note", "Reauthenticated note")
+      then(ignored)
+        capture page
+        return click(page, "Save with recent password")
+      then(ignored)
+        capture page
+        return fill(page, "Password", "Browser test password only 2026!")
+      then(ignored)
+        capture page
+        return click(page, "Sign in")
+      then(ignored)
+        capture page
+        return text(page, "Note saved")
+      then(ignored)
+        capture state
+        capture page
+        assert inspect(state, "count") == 2
+        return click(page, "Sign out")
+      then(ignored)
+        capture page
+        return text(page, "Ready")
+      then(ignored)
+        capture state
+        capture page
+        inspect(state, "logout")
+        return fill(page, "Note", "New login note")
+      then(ignored)
+        capture page
+        return click(page, "Save note")
+      then(ignored)
+        capture page
+        return signIn(page, "alice")
+      then(ignored)
+        capture page
+        return text(page, "Note saved")
+      then(ignored)
+        capture state
+        assert inspect(state, "count") == 3
+        return state.browser.newContext({
+            ignoreHTTPSErrors: true
+        })
+      then(scope)
+        capture state
+        Object/assign(state, {
+            otherContext: scope
+        })
+        return scope.newPage()
+      then(other)
+        capture state
+        Object/assign(state, {
+            other: other
+        })
+        return other.goto("${state.origin}/")
+      then(ignored)
+        capture state
+        return fill(state.other, "Note", "Another client note")
+      then(ignored)
+        capture state
+        return click(state.other, "Save note")
+      then(ignored)
+        capture state
+        return signIn(state.other, "alice")
+      then(ignored)
+        capture state
+        return text(state.other, "Note saved")
+      then(ignored)
+        capture state
+        assert inspect(state, "count") == 4
+        return state.browser.newContext({
+            ignoreHTTPSErrors: true
+        })
+      then(scope)
+        capture state
+        Object/assign(state, {
+            adminContext: scope
+        })
+        return scope.newPage()
+      then(admin)
+        capture state
+        Object/assign(state, {
+            admin: admin
+        })
+        return admin.goto("${state.origin}/admin")
+      then(ignored)
+        capture state
+        return signIn(state.admin, "administrator")
+      then(ignored)
+        capture state
+        return text(state.admin, "Admin access accepted")
+      then(ignored)
+        capture state
+        return fill(state.admin, "User ID to ban", inspect(state, "alice"))
+      then(ignored)
+        capture state
+        return click(state.admin, "Ban user")
+      then(ignored)
+        capture state
+        return text(state.admin, "User banned")
+      then(ignored)
+        capture state
+        capture page
+        inspect(state, "ban")
+        return click(page, "Save note")
+      then(ignored)
+        capture page
+        return text(page, "HTTP 403")
+      then(ignored)
+        capture state
+        return click(state.other, "Save note")
+      then(ignored)
+        capture state
+        return text(state.other, "HTTP 403")
+      then(ignored)
+        capture state
+        assert inspect(state, "count") == 4
+        return state.page.context().cookies()
+      then(cookies)
+        found = false
+        for cookies as cookie
+            if cookie.name == "__Host-lango-client"
+                assert cookie.httpOnly and cookie.secure and cookie.sameSite == "Strict"
+                found = true
+        assert found
+
+cleanup(state)
+    pending = Promise/resolve(null)
+    if state.browser != null
+        pending = state.browser.close()
+    return chain pending
+      finally
+        capture state
+        if state.proxy != null
+            state.proxy.closeAllConnections()
+            state.proxy.close()
+        if state.child != null
+            state.child.kill("SIGTERM")
+            return state.exited
+      finally
+        capture state
+        capture fs
+        fs/rmSync(state.dir, {
+            recursive: true
+            force: true
+        })
+
+test "real HTTPS browser login resumes a DB mutation once and logout and ban enforce live grants"
+    state = setup()
+    return chain proxy(state)
+      then(ignored)
+        capture state
+        return launch(state)
+      then(ignored)
+        capture playwright
+        return playwright/chromium/launch({
+            headless: true
+        })
+      then(browser)
+        capture state
+        Object/assign(state, {
+            browser: browser
+        })
+        return browser.newContext({
+            ignoreHTTPSErrors: true
+        })
+      then(scope)
+        return scope.newPage()
+      then(page)
+        capture state
+        Object/assign(state, {
+            page: page
+        })
+        page.setDefaultTimeout(10000)
+        return exercise(state)
+      catch(error)
+        capture state
+        println("Security UI server stderr: ${state.stderr}")
+        println("Security UI server trace: ${state.stdout}")
+        throw error
+      finally
+        capture state
+        return cleanup(state)
